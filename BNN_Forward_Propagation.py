@@ -5,29 +5,8 @@ import numpy as np
 from scipy.stats import norm
 
 class bnn_forward_propagation():    
-    def __init__(self, input_layer, hidden_layers, output_layer, feature_data, target_data):
-        self.input_layer = input_layer
-        self.hidden_layers = hidden_layers
-        self.output_layer = output_layer
-        self.feature_data = feature_data
-        self.target_data = target_data
-    
-    def generate_model_structure(self):
-        return np.concatenate((self.input_layer,
-                                self.hidden_layers, 
-                                self.output_layer))
-
-    def _generate_m(self, n_origin_neurons, n_destination_neurons):
-        return np.random.random(size=(n_destination_neurons, n_origin_neurons))
-
-    def _generate_v(self, n_origin_neurons, n_destination_neurons):
-        return np.abs(np.random.random(size=(n_destination_neurons, n_origin_neurons)))
-        
-    def generate_m(self, model_structure):
-        return [self._generate_m(n_origin_neurons, n_destination_neurons) for n_origin_neurons, n_destination_neurons in zip(model_structure[:-1], model_structure[1:])]
-
-    def generate_v(self, model_structure):
-        return [self._generate_v(n_origin_neurons, n_destination_neurons) for n_origin_neurons, n_destination_neurons in zip(model_structure[:-1], model_structure[1:])]
+    def __init__(self):
+        return
 
     def _calculate_ma_i(self, mz_i_1, m_i):
         return (m_i @ mz_i_1) / (len(m_i) ** 0.5)
@@ -63,7 +42,7 @@ class bnn_forward_propagation():
         return (mz_i * (ma_i + ((va_i ** 0.5) * gamma)) * minus_cdf) \
                     + (cdf * va_i * (np.ones(len(ma_i)).reshape(-1, 1) - (gamma ** 0.5) - (gamma * alpha)))
 
-    def forward_propagation(self, m, v, model_structure):
+    def forward_propagation(self, feature_data_i, m, v, model_structure):
         ma = []
         va = []
         cdf = []
@@ -71,7 +50,7 @@ class bnn_forward_propagation():
         pdf = []
         gamma = []
         alpha = []
-        mz = [self.feature_data]
+        mz = [feature_data_i / feature_data_i]
         vz = [np.array([[0]])]
         
         for i in range(len(model_structure)-1):
@@ -86,11 +65,8 @@ class bnn_forward_propagation():
             
             mz.append(self._calculate_mz_i(ma[i], va[i], cdf[i], gamma[i]))
             vz.append(self._calculate_vz_i(ma[i], va[i], mz[i+1], cdf[i], minus_cdf[i], gamma[i], alpha[i]))
-        
+                
         return (ma, va, cdf, minus_cdf, pdf, gamma, alpha, mz, vz)
     
-    def predict(self, mz, vz):
-        return np.mean([np.random.normal(mz[-1][0, 0], vz[-1][0, 0] ** 0.5) for _ in range(250)])
-    
-    def evaluate_model(self, yn, y_pred):
-        return 
+    def predict(self, feature_data, mz, vz):
+        return np.mean([np.random.normal(mz[-1][0, 0], vz[-1][0, 0] ** 0.5) for _ in range(250)]) * feature_data 
