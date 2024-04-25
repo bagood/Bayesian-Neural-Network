@@ -58,9 +58,7 @@ class bayesian_neural_network():
         fig.set_size_inches(20, 10)
 
         ax1.plot(self.error)
-        ax1.set_title('MSE Throughout Training')
         ax2.plot(self.variance)
-        ax2.set_title('Variance Throughout Training')
 
         fig.show()
 
@@ -82,13 +80,10 @@ class bayesian_neural_network():
         upper = self.prediction_mean + self.prediction_std
         lower = self.prediction_mean - self.prediction_std
 
-        x_axis_data = np.arange(0, len(self.feature_data.reshape(1, -1)[0]))
-        ax.plot(x_axis_data, self.target_data.reshape(1, -1)[0], color='black', label='Mean')
-        ax.plot(x_axis_data, self.prediction_mean, color='green', label='Mean')
-        ax.plot(x_axis_data, upper, color='red', label='Upper')
-        ax.plot(x_axis_data, lower, color='red', label='Lower')
-        ax.fill_between(x_axis_data, upper, lower, color="blue", alpha=0.15)
-        ax.legend(['Data', 'Prediction Mean', 'Upper Bound x% Confidence Interval', 'Lower Bound x% Confidence Interval', 'Confidence Interval'])
+        ax.plot(self.feature_data.reshape(1, -1)[0], self.prediction_mean, color='green', label='Mean')
+        ax.plot(self.feature_data.reshape(1, -1)[0], upper, color='red', label='Upper')
+        ax.plot(self.feature_data.reshape(1, -1)[0], lower, color='red', label='Lower')
+        ax.fill_between(self.feature_data.reshape(1, -1)[0], upper, lower, color="blue", alpha=0.15)
 
         fig.show()
 
