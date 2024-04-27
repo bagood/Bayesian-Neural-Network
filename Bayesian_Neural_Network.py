@@ -79,15 +79,15 @@ class bayesian_neural_network():
         fig, ax = plt.subplots()
         fig.set_size_inches(20, 10)
 
-        upper = self.prediction_mean + self.prediction_std
-        lower = self.prediction_mean - self.prediction_std
+        self.upper_bound = self.prediction_mean + self.prediction_std
+        self.lower_bound = self.prediction_mean - self.prediction_std
 
         x_axis_data = np.arange(0, len(self.feature_data.reshape(1, -1)[0]))
         ax.plot(x_axis_data, self.target_data.reshape(1, -1)[0], color='black', label='Mean')
         ax.plot(x_axis_data, self.prediction_mean, color='green', label='Mean')
-        ax.plot(x_axis_data, upper, color='red', label='Upper')
-        ax.plot(x_axis_data, lower, color='red', label='Lower')
-        ax.fill_between(x_axis_data, upper, lower, color="blue", alpha=0.15)
+        ax.plot(x_axis_data, self.upper_bound, color='red', label='Upper')
+        ax.plot(x_axis_data, self.lower_bound, color='red', label='Lower')
+        ax.fill_between(x_axis_data, self.upper_bound, self.lower_bound, color="blue", alpha=0.15)
         ax.legend(['Data', 'Prediction Mean', 'Upper Bound x% Confidence Interval', 'Lower Bound x% Confidence Interval', 'Confidence Interval'])
 
         fig.show()
