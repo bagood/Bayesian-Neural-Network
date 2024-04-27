@@ -10,8 +10,8 @@ import matplotlib.pyplot as plt
 class bayesian_neural_network():
     def __init__(self, input_layer, hidden_layers, output_layer, feature_data, target_data, learning_rate):
         self.model_structure = np.concatenate((input_layer, hidden_layers, output_layer))
-        self.feature_data = np.array([[[val]] for val in feature_data])
-        self.target_data = np.array([[[val]] for val in feature_data])
+        self.feature_data = np.exp(feature_data - np.min(feature_data))
+        self.target_data = np.exp(target_data - np.min(feature_data))
 
         self.error = []
         self.variance = []
@@ -34,22 +34,43 @@ class bayesian_neural_network():
         self.v = [self._generate_v(n_origin_neurons, n_destination_neurons) for n_origin_neurons, n_destination_neurons in zip(self.model_structure[:-1], self.model_structure[1:])]
     
         return
-    
+
     def calculate_rmse_error(self, feature_data_i, target_data_i):
-        return (((target_data_i[0, 0] / feature_data_i[0, 0]) - self.mz[-1][0, 0]) ** 2) ** 0.5
+        # NEED TO BE FIXED
+        # ADJUST THIS FUNCTION SO THAT IT COMPARES THE REAL DATA WITH THE PROPERLY CALCULATED PREDICTION
+        return (self._standardize_target_data(feature_data_i, target_data_i)[0, 0] ** 2 - self.mz[-1][0, 0] ** 2) ** 0.5
+
+    def _standardize_feature_data(self, feature_data_i):
+        return feature_data_i / np.max(feature_data_i)
+    
+    def _standardize_target_data(self, feature_data_i, target_data_i):
+        return target_data_i / np.max(feature_data_i)
 
     def train(self, epochs):
         for epoch in range(epochs):
             for feature_data_i, target_data_i in zip(self.feature_data, self.target_data):
-                forward_propagation_result = self.bnn_fp.forward_propagation(feature_data_i / feature_data_i, self.m, self.v, self.model_structure)
-                d_logz_over_m, d_logz_over_v = self.bnn_pbp.calculate_derivatives(self.model_structure, target_data_i / feature_data_i, self.m, self.v, forward_propagation_result)
-                
-                self.m = self.bnn_pbp.optimize_m(self.m, self.v, d_logz_over_m)
-                self.v = self.bnn_pbp.optimize_v(self.m, self.v, d_logz_over_m, d_logz_over_v)
-
+                forward_propagation_result = self.bnn_fp.forward_propagation(self._standardize_feature_data(feature_data_i), 
+                                                                                self.m, 
+                                                                                self.v, 
+                                                                                self.model_structure)
+                d_logz_over_m, d_logz_over_v = self.bnn_pbp.calculate_derivatives(self.model_structure, 
+                                                                                    self._standardize_target_data(feature_data_i, target_data_i), 
+                                                                                    self.m, 
+                                                                                    self.v, 
+                                                                                    forward_propagation_result)
+                self.m = self.bnn_pbp.optimize_m(self.m, 
+                                                    self.v, 
+                                                    d_logz_over_m)
+                self.v = self.bnn_pbp.optimize_v(self.m, 
+                                                    self.v, 
+                                                    d_logz_over_m, 
+                                                    d_logz_over_v)
                 _, _, _, _, _, _, _, self.mz, self.vz = forward_propagation_result
-                self.error.append(self.calculate_rmse_error(feature_data_i, target_data_i))
+
+                self.error.append(self.calculate_rmse_error(feature_data_i, 
+                                                                target_data_i))
                 self.variance.append(self.vz[-1][0, 0])
+
         
         return         
     
@@ -58,7 +79,7 @@ class bayesian_neural_network():
         fig.set_size_inches(20, 10)
 
         ax1.plot(self.error)
-        ax1.set_title('MSE Throughout Training')
+        ax1.set_title('RMSE Throughout Training')
         ax2.plot(self.variance)
         ax2.set_title('Variance Throughout Training')
 
@@ -70,8 +91,11 @@ class bayesian_neural_network():
         return [np.random.normal(self.mz[-1][0, 0], self.vz[-1][0, 0] ** 0.5) for _ in range(250)]
     
     def predict(self):
-        self.prediction_mean = np.array([np.mean(self._sampling_from_normal_dist()) for feature_data_i in self.feature_data]).reshape(1, -1)[0] * self.target_data.reshape(1, -1)[0]
-        self.prediction_std = np.array([np.std(self._sampling_from_normal_dist()) for feature_data_i in self.feature_data]).reshape(1, -1)[0] * self.target_data.reshape(1, -1)[0]
+        # NEED TO BE FIXED
+        # PERFORM FORWARD PROPAGATION UTILIZING THE WEIGHT'S MEAN TO GET THE PREDICITON'S MEAN
+        # PERFORM FORWARD PROPAGATION UTILIZING THE WEIGHT'S VARIANCE TO GET THE PREDICTION'S VARIANCE
+        self.prediction_mean = np.array([np.mean(self._sampling_from_normal_dist()) for _ in self.feature_data]).reshape(1, -1)[0] * self.target_data.reshape(1, -1)[0]
+        self.prediction_std = np.array([np.std(self._sampling_from_normal_dist()) for _ in self.feature_data]).reshape(1, -1)[0] * self.target_data.reshape(1, -1)[0]
 
         return (self.prediction_mean, self.prediction_std)
     
@@ -79,12 +103,12 @@ class bayesian_neural_network():
         fig, ax = plt.subplots()
         fig.set_size_inches(20, 10)
 
-        self.upper_bound = self.prediction_mean + self.prediction_std
-        self.lower_bound = self.prediction_mean - self.prediction_std
+        self.upper_bound = np.log(self.prediction_mean + self.prediction_std)
+        self.lower_bound = np.log(self.prediction_mean - self.prediction_std)
 
-        x_axis_data = np.arange(0, len(self.feature_data.reshape(1, -1)[0]))
-        ax.plot(x_axis_data, self.target_data.reshape(1, -1)[0], color='black', label='Mean')
-        ax.plot(x_axis_data, self.prediction_mean, color='green', label='Mean')
+        x_axis_data = np.arange(0, len(self.target_data))
+        ax.plot(x_axis_data, np.log(self.target_data.reshape(1, -1)[0]), color='black', label='Mean')
+        ax.plot(x_axis_data, np.log(self.prediction_mean), color='green', label='Mean')
         ax.plot(x_axis_data, self.upper_bound, color='red', label='Upper')
         ax.plot(x_axis_data, self.lower_bound, color='red', label='Lower')
         ax.fill_between(x_axis_data, self.upper_bound, self.lower_bound, color="blue", alpha=0.15)

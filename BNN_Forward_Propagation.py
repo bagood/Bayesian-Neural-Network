@@ -50,8 +50,8 @@ class bnn_forward_propagation():
         pdf = []
         gamma = []
         alpha = []
-        mz = [feature_data_i / feature_data_i]
-        vz = [np.array([[0]])]
+        mz = [feature_data_i / np.max(feature_data_i)]
+        vz = [np.zeros((model_structure[0], 1))]
         
         for i in range(len(model_structure)-1):
             ma.append(self._calculate_ma_i(mz[i], m[i]))
