@@ -67,6 +67,11 @@ class bnn_forward_propagation():
             vz.append(self._calculate_vz_i(ma[i], va[i], mz[i+1], cdf[i], minus_cdf[i], gamma[i], alpha[i]))
                 
         return (ma, va, cdf, minus_cdf, pdf, gamma, alpha, mz, vz)
-    
-    def predict(self, feature_data, mz, vz):
-        return np.mean([np.random.normal(mz[-1][0, 0], vz[-1][0, 0] ** 0.5) for _ in range(250)]) * feature_data 
+
+    def feed_forward_neural_network(self, param, feature_data_i):
+        neuron_values = [feature_data_i]
+        for p in param:
+            layers = p @ neuron_values[-1]
+            neuron_values.append(layers)
+
+        return np.log(neuron_values[-1])
