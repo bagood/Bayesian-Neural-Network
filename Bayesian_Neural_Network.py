@@ -18,7 +18,7 @@ class bayesian_neural_network():
         self.target_data_scaled = (np.exp(target_data).reshape(-1, 1) / np.max(np.exp(feature_data), axis=1)).reshape(-1, 1, 1)
         # empty list to store all errors 
         self.mean_error = []
-        self.variance_error = []
+        self.std_error = []
         # create instances of class for the forward and backward propagation object
         self.bnn_fp = bnn_forward_propagation()
         self.bnn_pbp = bnn_probabilistic_back_propagation(learning_rate)
@@ -69,16 +69,6 @@ class bayesian_neural_network():
         """
         return (target_data_i - pred_mean_i)[0, 0] ** 2
     
-    def _calculate_prediction_variance_error(self, target_data_i, pred_variance_i):
-        """
-        calculate the mean squared error for the mean of the prediction
-
-        Args:
-        target_data_i (float) - the current feature data used to determine the mean of prediction
-        pred_variance_i (float) - the current variance of prediction
-        """
-        return np.abs(target_data_i - pred_variance_i)[0 ,0]
-
     def train(self, epochs):
         """
         perform forward propagation to acquire all necessary variables, then perform backward propagation to optimize the model weight's mean and variance
@@ -107,15 +97,16 @@ class bayesian_neural_network():
                 self.v = self.bnn_pbp.optimize_v(self.m, 
                                                     self.v, 
                                                     d_logz_over_m, 
+
                                                     d_logz_over_v)
-                # calculate the mean and variance of the predicton
-                pred_mean_i = self.bnn_fp.feed_forward_neural_network(self.m, feature_data_i)
-                pred_var_i = self.bnn_fp.feed_forward_neural_network(self.v, feature_data_i)
-                # calculate the errors and store in the list
-                self.mean_error.append(self._calculate_prediction_mean_error(target_data_i, 
-                                                                            pred_mean_i))
-                self.variance_error.append(self._calculate_prediction_variance_error(target_data_i,
-                                                                                    pred_var_i))
+
+            # calculate the mean and variance of the predicton
+            pred_mean_i, pred_std_i = self.bnn_fp.feed_forward_neural_network(self.m, self.v, feature_data_i)
+
+            # calculate the errors and store in the list
+            self.mean_error.append(self._calculate_prediction_mean_error(target_data_i, 
+                                                                        pred_mean_i))
+            self.std_error.append(pred_std_i)
 
         return         
     
@@ -128,7 +119,7 @@ class bayesian_neural_network():
 
         ax1.plot(self.mean_error)
         ax1.set_title('Mean MSE Throughout Training')
-        ax2.plot(self.variance_error)
+        ax2.plot(self.std_error)
         ax2.set_title('Variance Throughout Training')
 
         fig.show()
@@ -150,15 +141,10 @@ class bayesian_neural_network():
         create predictions on the data used in the training process
         """
         # create a list containing mean and variance of the prediction for each feature data
-        pred_mean = [self.bnn_fp.feed_forward_neural_network(self.m, feature_data_i)[0, 0] for feature_data_i in self.feature_data]
-        pred_var = [self._calculate_prediction_variance_error(target_data_i, self.bnn_fp.feed_forward_neural_network(self.v, feature_data_i)) for feature_data_i, target_data_i in zip(self.feature_data, self.target_data)]
-        # pred_var = [np.abs(self.bnn_fp.feed_forward_neural_network(self.v, feature_data_i) - np.log(self.target_data[i]))[0, 0] for i, feature_data_i in enumerate(self.feature_data)]
-        # sampling from a normal distribution
-        normal_sample = [self._sampling_from_normal_dist(pred_mean_i, pred_var_i) for pred_mean_i, pred_var_i in zip(pred_mean, pred_var)]
-        # calculate the mean and variance for each collections of samples
-        self.prediction_mean = np.mean(normal_sample, axis=1)
-        self.prediction_std = np.std(normal_sample, axis=1)
-
+        predictions = np.array([self.bnn_fp.feed_forward_neural_network(self.m, self.v, feature_data_i) for feature_data_i in self.feature_data])
+        self.predictions_mean = predictions[:, 0]
+        self.predictions_std = predictions[:, 1]
+    
         return
     
     def visualize_predictions_on_seen_data(self):
@@ -169,12 +155,12 @@ class bayesian_neural_network():
         fig.set_size_inches(20, 10)
 
         # calculate the upper and lower bound of the prediction
-        self.upper_bound = self.prediction_mean + self.prediction_std
-        self.lower_bound = self.prediction_mean - self.prediction_std
+        self.upper_bound = self.predictions_mean + self.predictions_std
+        self.lower_bound = self.predictions_mean - self.predictions_std
 
         x_axis = np.arange(0, len(self.feature_data))
         ax.plot(x_axis, self.target_data.reshape(1, -1)[0], color='black', label='Mean')
-        ax.plot(x_axis, self.prediction_mean, color='green', label='Mean')
+        ax.plot(x_axis, self.predictions_mean, color='green', label='Mean')
         ax.plot(x_axis, self.upper_bound, color='red', label='Upper')
         ax.plot(x_axis, self.lower_bound, color='red', label='Lower')
         ax.fill_between(x_axis, self.upper_bound, self.lower_bound, color="blue", alpha=0.15)

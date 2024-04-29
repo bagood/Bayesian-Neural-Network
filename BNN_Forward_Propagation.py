@@ -131,18 +131,31 @@ class bnn_forward_propagation():
                 
         return (ma, va, cdf, minus_cdf, pdf, gamma, alpha, mz, vz)
 
-    def feed_forward_neural_network(self, weight, feature_data_i):
+    def activation_function(self, neuron_value):
+        return [np.max([[0], neuron_value])]
+
+    def feed_forward_neural_network(self, mean, variance, feature_data_i):
         """
         perform feed forward to acquire prediction using the model
         the feature data is transformed using an exponential function and the model output is coverted back using a natural logarithmic function
 
         Args:
-        weight (float) - the model weights
         feature_data_i (float) - the current feature_data
         """
-        neuron_values = [np.exp(feature_data_i)]
-        for w in weight:
-            layers = w @ neuron_values[-1]
-            neuron_values.append(layers)
+        predictions_i = []
+        for _ in range(100):
+            neuron_values = [np.exp(feature_data_i)]
+            
+            for mean_i, var_i in zip(mean, variance):
+                weight = np.random.normal(mean_i, var_i)
+                layers = weight @ neuron_values[-1]
+                activated_layers = np.array([self.activation_function(l) for l in layers])
+                neuron_values.append(activated_layers)
+                
+            if neuron_values[-1][0, 0] > 0:
+                predictions_i.append(np.log(neuron_values[-1][0, 0]))
+        
+        predictions_mean = np.mean(predictions_i)
+        predictions_std = np.std(predictions_i)
 
-        return np.log(neuron_values[-1])
+        return (predictions_mean, predictions_std)
