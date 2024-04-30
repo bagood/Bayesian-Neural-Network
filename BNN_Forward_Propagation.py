@@ -143,7 +143,7 @@ class bnn_forward_propagation():
         feature_data_i (float) - the current feature_data
         """
         predictions_i = []
-        for _ in range(100):
+        for _ in range(250):
             neuron_values = [np.exp(feature_data_i)]
             
             for mean_i, var_i in zip(mean, variance):

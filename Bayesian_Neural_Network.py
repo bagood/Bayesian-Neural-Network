@@ -118,7 +118,7 @@ class bayesian_neural_network():
         fig.set_size_inches(20, 10)
 
         ax1.plot(self.mean_error)
-        ax1.set_title('Mean MSE Throughout Training')
+        ax1.set_title('MSE Throughout Training')
         ax2.plot(self.std_error)
         ax2.set_title('Variance Throughout Training')
 
