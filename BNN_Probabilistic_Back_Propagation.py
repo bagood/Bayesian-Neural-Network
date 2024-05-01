@@ -4,8 +4,8 @@ simplefilter('ignore')
 import numpy as np
 
 class bnn_probabilistic_back_propagation():
-    def __init__(self, learning_rate):
-        self.learning_rate = learning_rate
+    def __init__(self):
+        return
 
     def _derivative_ma_i_over_mz_i_1(self, m_i):
         return m_i / (len(m_i) ** 0.5) 
@@ -164,14 +164,9 @@ class bnn_probabilistic_back_propagation():
         d_logz_over_v = [self._derivative_logz_over_m_i(d_logz_over_ma[i], d_logz_over_va[i], d_ma_over_v[i], d_va_over_v[i]) for i in range(n_layers)]
 
         return (d_logz_over_m, d_logz_over_v)
-    
-    def _linear_learning_rate_scheduler(self, end_lr, total_epochs, current_epoch):
-        self.learning_rate -= (((self.learning_rate - end_lr) / total_epochs) * current_epoch)
-    
-        return 
- 
-    def optimize_m(self, m, v, d_logz_over_m):
-        return [m_ + (self.learning_rate * (v_ * d_m)) for m_, v_, d_m in zip(m, v, d_logz_over_m)]
+     
+    def optimize_m(self, m, v, d_logz_over_m, learning_rate):
+        return [m_ + (learning_rate * (v_ * d_m)) for m_, v_, d_m in zip(m, v, d_logz_over_m)]
 
-    def optimize_v(self, m, v, d_logz_over_m, d_logz_over_v):
-        return [v_ - (self.learning_rate * ((v_ ** 2) * ((d_m ** 2) - (2 * d_v)))) for m_, v_, d_m, d_v in zip(m, v, d_logz_over_m, d_logz_over_v)]
+    def optimize_v(self, m, v, d_logz_over_m, d_logz_over_v, learning_rate):
+        return [v_ - (learning_rate * ((v_ ** 2) * ((d_m ** 2) - (2 * d_v)))) for m_, v_, d_m, d_v in zip(m, v, d_logz_over_m, d_logz_over_v)]

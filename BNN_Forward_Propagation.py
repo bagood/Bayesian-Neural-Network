@@ -12,8 +12,8 @@ class bnn_forward_propagation():
         """
         calculate the ith layer input marginal mean
         Args:
-        mz_i_1 (float) - the (i-1)th layer output marginal mean
-        m_i (float) - the ith layer weight's mean
+        mz_i_1 (matrices of floats) - the (i-1)th layer output marginal mean
+        m_i (matrices of floats) - the ith layer weight's mean
         """
         return (m_i @ mz_i_1) / (len(m_i) ** 0.5)
 
@@ -21,10 +21,10 @@ class bnn_forward_propagation():
         """
         calculate the ith layer input marginal variance
         Args:
-        mz_i_1 (float) - the (i-1)th layer output marginal mean
-        vz_i_1 (float) - the (i-1)th layer output marginal variance
-        m_i (float) - the ith layer weight's mean
-        v_i (float) - the ith layer weight's variance
+        mz_i_1 (matrices of floats) - the (i-1)th layer output marginal mean
+        vz_i_1 (matrices of floats) - the (i-1)th layer output marginal variance
+        m_i (matrices of floats) - the ith layer weight's mean
+        v_i (matrices of floats) - the ith layer weight's variance
         """
         return  (((m_i * m_i) @ vz_i_1) \
                     + (v_i @ (mz_i_1 * mz_i_1)) ) \
@@ -34,8 +34,8 @@ class bnn_forward_propagation():
         """
         calculate the ith layer alpha value
         Args:
-        ma_i (float) - the ith layer input marginal mean
-        va_i (float) - the ith layer input marginal variance
+        ma_i (matrices of floats) - the ith layer input marginal mean
+        va_i (matrices of floats) - the ith layer input marginal variance
         """
         return ma_i / (va_i ** 0.5)
 
@@ -43,8 +43,8 @@ class bnn_forward_propagation():
         """
         calculate the ith layer gaussian cumulative distributive function
         Args:
-        ma_i (float) - the ith layer input marginal mean
-        va_i (float) - the ith layer input marginal variance
+        ma_i (matrices of floats) - the ith layer input marginal mean
+        va_i (matrices of floats) - the ith layer input marginal variance
         minus (bool) - ture if the alpha is negative
         """
         if minus:
@@ -58,8 +58,8 @@ class bnn_forward_propagation():
         """
         calculate the ith layer gaussian probability density function
         Args:
-        ma_i (float) - the ith layer input marginal mean
-        va_i (float) - the ith layer input marginal variance
+        ma_i (matrices of floats) - the ith layer input marginal mean
+        va_i (matrices of floats) - the ith layer input marginal variance
         """
         alpha = self._calculate_alpha(ma_i, va_i)
         
@@ -69,8 +69,8 @@ class bnn_forward_propagation():
         """
         calculate the ith layer gamma value
         Args:
-        cdf (float) - the ith layer gaussian cumulative distributive function
-        pdf (float) - the ith layer gaussian probability density function
+        cdf (matrices of floats) - the ith layer gaussian cumulative distributive function
+        pdf (matrices of floats) - the ith layer gaussian probability density function
         """
         return pdf / cdf
         
@@ -78,10 +78,10 @@ class bnn_forward_propagation():
         """
         calculate the ith layer output mariginal mean
         Args:
-        ma_i (float) - the ith layer input marginal mean
-        va_i (float) - the ith layer input marginal variance
-        cdf (float) - the ith layer gaussian cumulative distributive function
-        gamma (float) - the ith layer gamma value
+        ma_i (matrices of floats) - the ith layer input marginal mean
+        va_i (matrices of floats) - the ith layer input marginal variance
+        cdf (matrices of floats) - the ith layer gaussian cumulative distributive function
+        gamma (matrices of floats) - the ith layer gamma value
         """
         return cdf * (ma_i + ((va_i ** 0.5) * gamma))
 
@@ -89,13 +89,13 @@ class bnn_forward_propagation():
         """
         calculate the ith layer output mariginal mean
         Args:
-        ma_i (float) - the ith layer input marginal mean
-        va_i (float) - the ith layer input marginal variance
-        mz_i (float) - the ith layer output marginal mean
-        cdf (float) - the ith layer gaussian cumulative distributive function
-        minus_cdf (float) - the ith layer gaussian cumulative distributive function
-        gamma (float) - the ith layer gamma value
-        alpha (float) - the ith layer alpha value
+        ma_i (matrices of floats) - the ith layer input marginal mean
+        va_i (matrices of floats) - the ith layer input marginal variance
+        mz_i (matrices of floats) - the ith layer output marginal mean
+        cdf (matrices of floats) - the ith layer gaussian cumulative distributive function
+        minus_cdf (matrices of floats) - the ith layer gaussian cumulative distributive function
+        gamma (matrices of floats) - the ith layer gamma value
+        alpha (matrices of floats) - the ith layer alpha value
         """
         return (mz_i * (ma_i + ((va_i ** 0.5) * gamma)) * minus_cdf) \
                     + (cdf * va_i * (np.ones(len(ma_i)).reshape(-1, 1) - (gamma ** 0.5) - (gamma * alpha)))
@@ -105,10 +105,10 @@ class bnn_forward_propagation():
         perform forward propagation to acquire all the necessary variables
 
         Args:
-        feature_data_i (float) - the current feature_data
-        m (float) - the model weight's mean
-        v (float) - the model weight's variance
-        model_structure (float) - list containing number of neurons on each layers
+        feature_data_i (matrices of floats) - the current feature_data
+        m (matrices of floats) - the model weight's mean
+        v (matrices of floats) - the model weight's variance
+        model_structure (matrices of floats) - list containing number of neurons on each layers
         """
         # empty list to store all variables
         ma, va, cdf, minus_cdf, pdf, gamma, alpha = [], [], [], [], [], [], []
@@ -131,7 +131,7 @@ class bnn_forward_propagation():
                 
         return (ma, va, cdf, minus_cdf, pdf, gamma, alpha, mz, vz)
 
-    def activation_function(self, neuron_value):
+    def _activation_function(self, neuron_value):
         return [np.max([[0], neuron_value])]
 
     def feed_forward_neural_network(self, mean, variance, feature_data_i):
@@ -140,21 +140,25 @@ class bnn_forward_propagation():
         the feature data is transformed using an exponential function and the model output is coverted back using a natural logarithmic function
 
         Args:
-        feature_data_i (float) - the current feature_data
+        mean (matrices of floats) - the corresponding mean of the weight
+        variance (matrices of floats) - the corresponding variance of the weight
+        feature_data_i (matrices of floats) - the current feature data used to make prediction
         """
-        predictions_i = []
-        for _ in range(250):
-            neuron_values = [np.exp(feature_data_i)]
-            
+        predictions_i = [] # create an empty list to contain the prediction made by the model on each simulations
+        for _ in range(100): # perform simulations for 100 times
+            neuron_values = [feature_data_i] # since the untreated feature data is used, we would have to apply exponential function into the data
+            # perform standard feed forward in the neural network
             for mean_i, var_i in zip(mean, variance):
-                weight = np.random.normal(mean_i, var_i)
+                weight = np.random.normal(mean_i, var_i) # take sample for the wieght from a normal sample using the mean and variance correspond to the weights
                 layers = weight @ neuron_values[-1]
-                activated_layers = np.array([self.activation_function(l) for l in layers])
+                activated_layers = np.array([self._activation_function(l) for l in layers])
                 neuron_values.append(activated_layers)
-                
+            # the value of the value of the prediction should be positively valued so that the logarithm of it is defined
             if neuron_values[-1][0, 0] > 0:
-                predictions_i.append(np.log(neuron_values[-1][0, 0]))
+                predictions_i.append(neuron_values[-1][0, 0])
         
+        predictions_i = np.log(predictions_i)
+        # calculate the mean and standard deviation of the prediction
         predictions_mean = np.mean(predictions_i)
         predictions_std = np.std(predictions_i)
 
