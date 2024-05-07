@@ -134,7 +134,7 @@ class bnn_forward_propagation():
     def _activation_function(self, neuron_value):
         return [np.max([[0], neuron_value])]
 
-    def feed_forward_neural_network(self, mean, variance, feature_data_i):
+    def feed_forward_neural_network(self, mean, variance, feature_data_i, model_structure):
         """
         perform feed forward to acquire prediction using the model
         the feature data is transformed using an exponential function and the model output is coverted back using a natural logarithmic function
@@ -145,12 +145,12 @@ class bnn_forward_propagation():
         feature_data_i (matrices of floats) - the current feature data used to make prediction
         """
         predictions_i = [] # create an empty list to contain the prediction made by the model on each simulations
-        for _ in range(100): # perform simulations for 100 times
+        for _ in range(50): # perform simulations for 100 times
             neuron_values = [feature_data_i] # since the untreated feature data is used, we would have to apply exponential function into the data
             # perform standard feed forward in the neural network
-            for mean_i, var_i in zip(mean, variance):
-                weight = np.random.normal(mean_i, var_i) # take sample for the wieght from a normal sample using the mean and variance correspond to the weights
-                layers = weight @ neuron_values[-1]
+            for i, (mean_i, var_i) in enumerate(zip(mean, variance)):
+                weight = np.random.normal(mean_i, var_i) # take sample for the weight from a normal sample using the mean and variance correspond to the weights
+                layers = (weight @ neuron_values[-1]) / (model_structure[i] ** 0.5)
                 activated_layers = np.array([self._activation_function(l) for l in layers])
                 neuron_values.append(activated_layers)
             # the value of the value of the prediction should be positively valued so that the logarithm of it is defined
