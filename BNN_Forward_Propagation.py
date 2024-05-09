@@ -162,7 +162,7 @@ class bnn_forward_propagation():
     
     def _feed_forward_neural_network(self, mean, variance, feature_data, model_structure):
         """
-        the feed forward process to acquire prediction based on the feature data
+        the feed forward process to acquire non-activated prediction based on the feature data
 
         Args:
         mean (array of matrices of floats) - the weight's mean on all layers in the model
@@ -171,13 +171,16 @@ class bnn_forward_propagation():
         latest_neuron_values = feature_data # sets the input layer as the feature data
         
         # perform standard feed forward in the neural network
-        for i, (mean_i, var_i) in enumerate(zip(mean, variance)):
+        for i, (mean_i, var_i) in enumerate(zip(mean[:-1], variance[:-1])):
             weight = np.random.normal(mean_i, var_i) # take sample from a normal distribution with the mean and variance are the corresponding weight's mean and variance
             layers = (weight @ latest_neuron_values) / (model_structure[i] ** 0.5)
             activated_layers = self._relu_activation_function(layers) # activate the neuron values in the current layer
             latest_neuron_values = activated_layers
         
-        return latest_neuron_values.reshape(1, -1)[0]
+        weight = np.random.normal(mean[-1], variance[-1]) # take sample from a normal distribution with the mean and variance are the corresponding weight's mean and variance
+        predictions = (weight @ latest_neuron_values) / (model_structure[-2] ** 0.5)
+        
+        return predictions.reshape(1, -1)[0]
 
     def feed_forward_neural_network(self, mean, variance, feature_data, model_structure, transorm_pred_func='log'):
         """
@@ -189,16 +192,18 @@ class bnn_forward_propagation():
         feature_data (matrices of floats) - the feature datas used to create the predictions
         """
         # create predictions based on the feature data for 100 times
-        predictions = np.array([self._feed_forward_neural_network(mean, variance, feature_data, model_structure) for _ in range(100)])
+        predictions = np.array([self._feed_forward_neural_network(mean, variance, feature_data, model_structure) for _ in range(250)])
 
         # for a time-series data, the predictions must be applied with a loogarithmic funtion because the target data used to train the model are applied with an exponential function
         # for classification purposes, the predictions must be applied with a sigmoid functiom
         if transorm_pred_func == 'log':
-            # there are chances for the prediction's value to be zero, we will remove all prediction's with the value of zero since it will resulted in -inf if applied with a logarithmic function
-            index_equal_to_zero = (predictions == 0).reshape(1, -1)[0]
-            predictions.reshape(1, -1)[0][index_equal_to_zero] = np.nan
+            # there are chances for the prediction's value to be less than zero, we will remove all prediction's with the value of zero since it will resulted in -inf if applied with a logarithmic function
+            index_less_equal_to_zero = (predictions <= 0).reshape(1, -1)[0]
+            predictions.reshape(1, -1)[0][index_less_equal_to_zero] = np.nan
             predictions = np.log(predictions)
         else:
+            index_equal_to_zero = (predictions == 0).reshape(1, -1)[0]
+            predictions.reshape(1, -1)[0][index_equal_to_zero] = np.nan
             predictions = np.array([self._sigmoid_activation_function(pred) for pred in predictions])
 
         # calculate the prediction's mean and standard deviation while ignoring any missing values

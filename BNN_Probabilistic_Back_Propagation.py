@@ -165,24 +165,18 @@ class bnn_probabilistic_back_propagation():
         """
         calculate the derivative of the Lth log(z) over the Lth marginal input mean
         """
-        numerator = (target_data[0, 0] - ma_L) / va_L * np.exp(-1 * ((target_data[0, 0] - ma_L) ** 2) / (2 * va_L))
-        denumerator = 1 - \
-                        (np.pi / 2 * np.exp(2 * np.pi * va_L)) + \
-                            + np.exp(-1 * ((target_data[0, 0] - ma_L) ** 2) / (2 * va_L))
-
-        return numerator / denumerator
+        ma_L_star = 1 / (1 + np.exp(-1 * ma_L))
+    
+        # return np.exp(-1 * ma_L) * ((1 + np.exp(-1 * ma_L)) ** (-2)) * ((target_data[0, 0] - ma_L_star) / va_L)
+        return (target_data[0, 0] - ma_L_star) / va_L
 
     def _derivative_logz_over_va_L_with_sigmoid_activation(self, target_data, ma_L, va_L):
         """
         calculate the derivative of the Lth log(z) over the Lth marginal input variance
         """
-        numerator = (-1 * np.pi * np.exp(2 * np.pi * va_L)) + \
-                (((target_data[0, 0] - ma_L) / va_L) ** 2) * np.exp(-1 * ((target_data[0, 0] - ma_L) ** 2) / (2 * va_L))
-        denumerator = 1 - \
-                        (np.pi / 2 * np.exp(2 * np.pi * va_L)) + \
-                            + np.exp(-1 * ((target_data[0, 0] - ma_L) ** 2) / (2 * va_L))
+        ma_L_star = 1 / (1 + np.exp(-1 * ma_L))
 
-        return numerator / denumerator
+        return 0.5 * ((((target_data[0, 0] - ma_L_star) / va_L) ** 2) - (1 / va_L))
 
     def _derivative_logz_over_ma_L_with_log_activation(self, target_data, ma_L, va_L):
         """

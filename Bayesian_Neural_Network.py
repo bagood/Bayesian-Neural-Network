@@ -24,11 +24,13 @@ class bayesian_neural_network():
             self.transorm_pred_func = 'log'
             self.feature_data = np.exp(feature_data)
             self.target_data = np.exp(target_data)
+            self.initialization_type = 'random'
         else:
             # the settings for non time-series data
             self.transorm_pred_func = 'sigmoid'
             self.feature_data = feature_data
             self.target_data = target_data
+            self.initialization_type = 'xavier'
 
         # raises an error if learning rate, initial learning rate, and end learning rate present as inputs
         if (learning_rate != None) and ((initial_lr != None) and (end_lr != None)):
@@ -76,12 +78,13 @@ class bayesian_neural_network():
         standardize both feature data and target data by applying an exponential function, then divide it with the max value of the corresponding windowed feature data
         performing transformations as such helps improve the training process
         """
-        self.feature_data_scaled = self.feature_data.reshape(-1, self.feature_data.shape[1], 1) / np.max(self.feature_data, axis=1).reshape(-1, 1, 1)
+        # self.feature_data_scaled = self.feature_data.reshape(-1, self.feature_data.shape[1], 1) / np.max(self.feature_data, axis=1).reshape(-1, 1, 1)
+        self.feature_data_scaled = self.feature_data
         self.target_data_scaled = self.target_data.reshape(-1, 1, 1)
 
         return
 
-    def _generate_m(self, n_origin_neurons, n_destination_neurons):
+    def _generate_m_normal_initialization(self, n_origin_neurons, n_destination_neurons):
         """
         create an initial weight's mean for all neurons in a layer
 
@@ -89,9 +92,9 @@ class bayesian_neural_network():
         n_origin_neurons (integer) - number of neurons in the previous layer
         n_destination_neurons (integer) - number of neurons in the current layer
         """
-        return np.random.normal(size=(n_destination_neurons, n_origin_neurons))
+        return np.random.uniform(-1, 1, size=(n_destination_neurons, n_origin_neurons))
 
-    def _generate_v(self, n_origin_neurons, n_destination_neurons):
+    def _generate_v_normal_initialization(self, n_origin_neurons, n_destination_neurons):
         """
         create an initial weight's variance for all neurons in a layer
         since variance are always non-positive, it is necessary to apply an absolute function to ensure that
@@ -101,12 +104,39 @@ class bayesian_neural_network():
         n_destination_neurons (integer) - number of neurons in the current layer
         """
         return np.abs(np.random.random(size=(n_destination_neurons, n_origin_neurons)))
+
+    def _generate_m_random_xavier_initialization(self, n_origin_neurons, n_destination_neurons):
+        """
+        create an initial weight's mean for all neurons in a layer
+
+        Args:
+        n_origin_neurons (integer) - number of neurons in the previous layer
+        n_destination_neurons (integer) - number of neurons in the current layer
+        """
+
+        return np.zeros((n_destination_neurons, n_origin_neurons))
+
+    def _generate_v_random_xavier_initialization(self, n_origin_neurons, n_destination_neurons):
+        """
+        create an initial weight's variance for all neurons in a layer
+        since variance are always non-positive, it is necessary to apply an absolute function to ensure that
+        
+        Args:
+        n_origin_neurons (integer) - number of neurons in the previous layer
+        n_destination_neurons (integer) - number of neurons in the current layer
+        """
+        x = (1 / n_origin_neurons) ** 2
+        
+        return np.ones((n_destination_neurons, n_origin_neurons)) * x
         
     def generate_m(self):
         """
         automate the process of generating all initial weight's mean on all layers
         """
-        self.m = [self._generate_m(n_origin_neurons, n_destination_neurons) for n_origin_neurons, n_destination_neurons in zip(self.model_structure[:-1], self.model_structure[1:])]
+        if self.initialization_type == 'random':
+            self.m = [self._generate_m_normal_initialization(n_origin_neurons, n_destination_neurons) for n_origin_neurons, n_destination_neurons in zip(self.model_structure[:-1], self.model_structure[1:])]
+        else:
+            self.m = [self._generate_m_random_xavier_initialization(n_origin_neurons, n_destination_neurons) for n_origin_neurons, n_destination_neurons in zip(self.model_structure[:-1], self.model_structure[1:])]
 
         return
 
@@ -114,16 +144,10 @@ class bayesian_neural_network():
         """
         automate the process of generating all initial weight's variance on all layers
         """
-        self.v = [self._generate_v(n_origin_neurons, n_destination_neurons) for n_origin_neurons, n_destination_neurons in zip(self.model_structure[:-1], self.model_structure[1:])]
-
-        # divide the variance by 10 for all variances that are larger than the corresponding mean
-        # for i in range(len(self.m)):
-        #     while True:
-        #         m_index_less_than_v = (np.abs(self.m[i]) < self.v[i]).reshape(1, -1)[0]
-        #         self.v[i].reshape(1, -1)[0][m_index_less_than_v] /= 2
-                
-        #         if ~np.any((np.abs(self.m[i]) < self.v[i]).reshape(1, -1)[0]):
-        #             break
+        if self.initialization_type == 'random':
+            self.v = [self._generate_v_normal_initialization(n_origin_neurons, n_destination_neurons) for n_origin_neurons, n_destination_neurons in zip(self.model_structure[:-1], self.model_structure[1:])]
+        else:
+            self.v = [self._generate_v_random_xavier_initialization(n_origin_neurons, n_destination_neurons) for n_origin_neurons, n_destination_neurons in zip(self.model_structure[:-1], self.model_structure[1:])]
 
         return
 
@@ -221,11 +245,14 @@ class bayesian_neural_network():
         # make prediction based on the model and calculate the prediction's mean and standard deviation
         pred_mean, pred_std = self.bnn_fp.feed_forward_neural_network(self.m, self.v, self.feature_data, self.model_structure, transorm_pred_func=self.transorm_pred_func)
 
-        # calculate the error and add it into their respective list
-        self.mean_error.append(error_func(pred_mean))
-        self.std_error.append(np.mean(pred_std))
+        # calculate the error and add it into their respective list 
+        mean_error = error_func(pred_mean)
+        std_error = np.mean(pred_std)
+        
+        self.mean_error.append(mean_error)
+        self.std_error.append(std_error)
 
-        return
+        return (mean_error, std_error)
 
     def _exponential_learning_rate_decay(self, total_epochs):
         """
@@ -238,7 +265,7 @@ class bayesian_neural_network():
         self.learning_rates = self.initial_lr / ((self.initial_lr / self.end_lr) * np.arange(1, total_epochs + 1) / total_epochs)
         return  
 
-    def _print_current_epoch_training_result(self, total_epochs, current_epoch, current_lr, start_time):
+    def _print_current_epoch_training_result(self, total_epochs, current_epoch, current_lr, start_time, text):
         """
         prints the current training result
 
@@ -247,11 +274,12 @@ class bayesian_neural_network():
         current_epoch (integer) - the current epoch for training the model
         current_lr (float) - the current learning rate used to train the model
         start_time (integer) - the initial time where the current epoch starts
+        text (string) - text that will be printed
         """
         time_passed = np.round(time() - start_time, 2) # calculate the time passed from the initial start time
         
         # create texts that will be printed
-        text_1 = f'Epoch : {current_epoch} / {total_epochs} - Learning Rate : {current_lr} - Succesfull Train Percentage : {self.succesfull_train / len(self.feature_data) * 100}% - Time Passed : {time_passed} Second'
+        text_1 = f'{text} : {current_epoch} / {total_epochs} - Learning Rate : {current_lr} - Succesfull Train Percentage : {self.succesfull_train / len(self.feature_data) * 100}% - Time Passed : {time_passed} Second'
         if self.transorm_pred_func == 'log':
             text_2 = f'MSE : {self.mean_error[-1]} - Standard Deviation : {self.std_error[-1]}'
         else:
@@ -261,6 +289,7 @@ class bayesian_neural_network():
         print(150 * '-')
         print(text_1)
         print(text_2)
+        print(150 * '-')
         
         return
 
@@ -287,9 +316,13 @@ class bayesian_neural_network():
         # start the training process
         for epoch, lr in enumerate(self.learning_rates):
             start_time = time() # initialize the time where the training prcoess starts
+
             self._training_sequences(lr, total_epochs, epoch + 1) # trains the model
-            self._calculating_errors_sequences(error_func) # calculate the model's performance
-            self._print_current_epoch_training_result(total_epochs, epoch + 1, lr, start_time) # prints the training process result
+            
+            # calculate and save the model's performance based on the current learning rate
+            self._calculating_errors_sequences(error_func)
+
+            self._print_current_epoch_training_result(total_epochs, epoch + 1, lr, start_time, 'Epoch') # prints the training process result
         
         return         
     
