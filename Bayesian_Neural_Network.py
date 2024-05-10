@@ -9,10 +9,12 @@ from time import time
 import matplotlib.pyplot as plt
 
 class bayesian_neural_network():
-    def __init__(self, input_layer, hidden_layers, output_layer, feature_data, target_data, error_type, window_size=None, learning_rate=None, initial_lr=None, end_lr=None):        
+    def __init__(self, input_layer, hidden_layers, output_layer, feature_data, target_data, validation_percentage=None, error_type='mse', window_size=None, learning_rate=None, initial_lr=None, end_lr=None):        
         # initilize all values required to build a bayesian neural network model
+
         self.model_structure = np.concatenate((input_layer, hidden_layers, output_layer) ) # create a list containing number of neurons on each layers
-        self.error_type = error_type # create a global variable for determining the type of error that measures the model's perofrmance
+        self.error_type = error_type # create a global variable for determining the type of error that measures the model's performance
+        self.validation_percentage = validation_percentage
         
         # create a global value for the window size value used to create the time-series feature data
         if window_size != None:
@@ -28,7 +30,7 @@ class bayesian_neural_network():
         else:
             # the settings for non time-series data
             self.transorm_pred_func = 'sigmoid'
-            self.feature_data = feature_data
+            self.feature_data = feature_data.reshape(-1, feature_data.shape[-1], 1)
             self.target_data = target_data
             self.initialization_type = 'xavier'
 
@@ -47,6 +49,8 @@ class bayesian_neural_network():
         # create global variables that stores model performance on each epochs
         self.mean_error = []
         self.std_error = []
+        self.val_mean_error = []
+        self.val_std_error = []
 
         # create instances of class for the forward and backward propagation object
         self.bnn_fp = bnn_forward_propagation()
@@ -59,7 +63,7 @@ class bayesian_neural_network():
         """
         self.feature_data = np.concatenate([self.target_data[i:-self.window_size+i].reshape(-1, 1) for i in range(self.window_size)], axis=1).reshape(-1, self.window_size, 1)
         self.target_data = self.target_data[self.window_size:]
-        
+             
         return
     
     def standardize_windowed_dataset(self):
@@ -78,9 +82,24 @@ class bayesian_neural_network():
         standardize both feature data and target data by applying an exponential function, then divide it with the max value of the corresponding windowed feature data
         performing transformations as such helps improve the training process
         """
-        # self.feature_data_scaled = self.feature_data.reshape(-1, self.feature_data.shape[1], 1) / np.max(self.feature_data, axis=1).reshape(-1, 1, 1)
         self.feature_data_scaled = self.feature_data
         self.target_data_scaled = self.target_data.reshape(-1, 1, 1)
+
+        return
+
+    def generate_validation_training_dataset(self):
+        val_index = 1 - np.floor(len(self.feature_data) * self.validation_percentage).astype(int)
+        self.validation_feature_data = self.feature_data[val_index:]
+        self.feature_data = self.feature_data[:val_index]
+
+        self.validation_feature_data_scaled = self.feature_data_scaled[val_index:]
+        self.feature_data_scaled = self.feature_data_scaled[:val_index]
+
+        self.validation_target_data = self.target_data[val_index:]
+        self.target_data = self.target_data[:val_index]
+
+        self.validation_target_data_scaled = self.target_data_scaled[val_index:]
+        self.target_data_scaled = self.target_data_scaled[:val_index]
 
         return
 
@@ -151,23 +170,23 @@ class bayesian_neural_network():
 
         return
 
-    def _calculate_prediction_mse(self, pred_mean):
+    def _calculate_prediction_mse(self, target_data, pred_mean):
         """
         calculate the prediction's mean squared error
 
         Args:
         pred_mean (1D array of floats) - the model's prediction on based on the feature data
         """
-        return np.mean((np.log(self.target_data) - pred_mean) ** 2)
+        return np.mean((np.log(target_data) - pred_mean) ** 2)
     
-    def _calculate_prediction_accuracy(self, pred_mean):
+    def _calculate_prediction_accuracy(self, target_data, pred_mean):
         """
         calculate the prediction's accuracy
 
         Args:
         pred_mean (1D array of floats) - the model's prediction on based on the feature data
         """
-        return 100 * np.sum(self.target_data == np.round(pred_mean)) / len(self.target_data)
+        return 100 * np.sum(target_data == np.round(pred_mean)) / len(target_data)
 
     def _print_current_epoch_training_process(self, total_epochs, current_epoch, current_lr, total_trained, start_time):
         """
@@ -182,7 +201,7 @@ class bayesian_neural_network():
         """
         time_passed = np.round(time() - start_time, 2) # calculate the time passed from the initial start time
         # create the text that will be printed
-        text = f'Epoch: {current_epoch} / {total_epochs} - Learning Rate : {current_lr} - Succesfull Train Percentage : {self.succesfull_train / total_trained * 100}% - Time Passed : {time_passed} Second'
+        text = f'Epoch: {current_epoch} / {total_epochs} - Learning Rate : {current_lr} - Succesfull Train Percentage : {np.round(self.succesfull_train / total_trained * 100, 2)}% - Time Passed : {time_passed} Second'
         print(text, end='\r')
 
         return
@@ -235,7 +254,7 @@ class bayesian_neural_network():
         
         return 
     
-    def _calculating_errors_sequences(self, error_func):
+    def _calculating_errors_sequences(self, error_func, feature_data, target_data):
         """
         the ordered sequences to calculate the model's performance
 
@@ -243,15 +262,12 @@ class bayesian_neural_network():
         error_func (function) - the function used to train the model
         """
         # make prediction based on the model and calculate the prediction's mean and standard deviation
-        pred_mean, pred_std = self.bnn_fp.feed_forward_neural_network(self.m, self.v, self.feature_data, self.model_structure, transorm_pred_func=self.transorm_pred_func)
+        pred_mean, pred_std = self.bnn_fp.feed_forward_neural_network(self.m, self.v, feature_data, self.model_structure, transorm_pred_func=self.transorm_pred_func)
 
         # calculate the error and add it into their respective list 
-        mean_error = error_func(pred_mean)
+        mean_error = error_func(target_data, pred_mean)
         std_error = np.mean(pred_std)
         
-        self.mean_error.append(mean_error)
-        self.std_error.append(std_error)
-
         return (mean_error, std_error)
 
     def _exponential_learning_rate_decay(self, total_epochs):
@@ -289,7 +305,28 @@ class bayesian_neural_network():
         print(150 * '-')
         print(text_1)
         print(text_2)
-        print(150 * '-')
+        
+        return
+
+    def _print_current_epoch_validation_result(self):
+        """
+        prints the current validation result
+
+        Args:
+        total_epochs (integer) - the total number of epochs for training the model
+        current_epoch (integer) - the current epoch for training the model
+        current_lr (float) - the current learning rate used to train the model
+        start_time (integer) - the initial time where the current epoch starts
+        text (string) - text that will be printed
+        """
+        # create texts that will be printed
+        if self.transorm_pred_func == 'log':
+            text = f'Validation MSE : {self.val_mean_error[-1]} - Validation Standard Deviation : {self.val_std_error[-1]}'
+        else:
+            text = f'Validation Accuracy : {self.val_mean_error[-1]}% - Validation Standard Deviation : {self.val_std_error[-1]}'
+
+        # print all texts
+        print(text)
         
         return
 
@@ -319,14 +356,26 @@ class bayesian_neural_network():
 
             self._training_sequences(lr, total_epochs, epoch + 1) # trains the model
             
-            # calculate and save the model's performance based on the current learning rate
-            self._calculating_errors_sequences(error_func)
+            # calculate and save the current model's performance based on the training data
+            mean_error, std_error = self._calculating_errors_sequences(error_func, self.feature_data, self.target_data)
+            self.mean_error.append(mean_error)
+            self.std_error.append(std_error)
 
             self._print_current_epoch_training_result(total_epochs, epoch + 1, lr, start_time, 'Epoch') # prints the training process result
+
+            if self.validation_percentage != None:
+                # calculate and save the current model's performance based on the validation data
+                val_mean_error, val_std_error = self._calculating_errors_sequences(error_func, self.validation_feature_data, self.validation_target_data)
+                self.val_mean_error.append(val_mean_error)
+                self.val_std_error.append(val_std_error)
+                
+                self._print_current_epoch_validation_result() # prints the training process result
+            
+            print(150 * '-') # just prints a line
         
         return         
     
-    def visualize_performance(self):
+    def visualize_model_performance(self):
         """
         visualize the model's performance throughout the training process
         """
@@ -334,45 +383,103 @@ class bayesian_neural_network():
         fig, (ax1, ax2) = plt.subplots(2, 1)
         fig.set_size_inches(20, 10)
 
-        # visualize the model's performance based on the calculated prediction's error
-        ax1.plot(self.mean_error)         
+        # visualize the model's performance based on the calculated prediction's error and standard deviation
+        ax1.plot(self.mean_error, color='blue')
+        ax2.plot(self.std_error, color='blue')
+        
+        # sets the figure's title
         if self.error_type == 'mse':
             ax1.set_title('MSE Throughout Training')
         else:
             ax1.set_title('Accuracy Throughout Training')
-        
-        # visualize the model's performance based on the prediction's standard deviation
-        ax2.plot(self.std_error)
         ax2.set_title('Variance Throughout Training')
+
+        list_of_legends = ['Training']
+
+        # visualize the model's performance based on the calculated prediction's error and standard deviation on validation data
+        if self.validation_percentage != None:
+            ax1.plot(self.val_mean_error, color='red')
+            ax2.plot(self.val_std_error, color='red')
+            list_of_legends.append('Validation')
+
+        # add legends to the visualizations
+        ax1.legend(list_of_legends)
+        ax2.legend(list_of_legends)
 
         # shows the visualizations
         fig.show()
 
-        return 
-    
-    def visualize_predictions_on_seen_data(self):
+        return
+
+    def _generate_predictions(self, feature_data):
         """
-        visualize both the prediction's and actual target values based on the corresponding feature data as well as visualizing the prediction's confidence interval
-        this function is made spcefically for time-series data 
+        create predictions based on the feature data
+
+        Args:
+        feature_data (array of floats) - the feature data sed to create predictions
         """
         # make predictions based on feature data used during training process
-        self.predictions_mean, self.predictions_std = self.bnn_fp.feed_forward_neural_network(self.m, self.v, self.feature_data, self.model_structure, transorm_pred_func=self.transorm_pred_func)
+        predictions_mean, predictions_std = self.bnn_fp.feed_forward_neural_network(self.m, self.v, feature_data, self.model_structure, transorm_pred_func=self.transorm_pred_func)
 
         # calculate the upper and lower bound of the prediction
-        self.upper_bound = self.predictions_mean + self.predictions_std
-        self.lower_bound = self.predictions_mean - self.predictions_std
+        upper_bound = predictions_mean + predictions_std
+        lower_bound = predictions_mean - predictions_std
 
+        return (predictions_mean, predictions_std, upper_bound, lower_bound)
+
+    def _visualize_time_series_predictions(self, ax, x_axis, target_data, predictions_mean, upper_bound, lower_bound, colors):
+        """
+        create line plot of the prediction's mean and confidence interval
+
+        Args:
+        ax (figure) - the figure for the visualization
+        x_axis (array of ints) - the visualization's x-axis
+        target_data (array of floats) - the actual target data
+        predictions_mean (array of floats) - the prediction's mean
+        upper_bound (array of floats) - the upper bound for the confidence interval
+        lower_bound (array of floats) - the upper bound for the confidence interval
+        colors (list of strings) - the list of colors for the visualization
+        """
+        ax.plot(x_axis, np.log(target_data), color=colors[0]) # visualize the actual target data
+        ax.plot(x_axis, predictions_mean, color=colors[1]) # visualize the predictions
+        ax.plot(x_axis, upper_bound, color=colors[2]) # visualize the prediction's upper bound
+        ax.plot(x_axis, lower_bound, color=colors[2]) # visualize the prediction's lower bound
+        ax.fill_between(x_axis, upper_bound, lower_bound, color=colors[3], alpha=0.15) # fills a color between the upper and lower bound visualizations
+        
+        return
+    
+    def visualize_time_series_predictions(self):
+        """
+        visualize the actual target data used for training and valiladtion as well as their respective prediction's mean and confidence interval
+        """
         # set the figure for the visualization
         fig, ax = plt.subplots()
         fig.set_size_inches(20, 10)
 
+        # generate prediction's mean and confidence interval based in the training data
+        predictions_mean, predictions_std, upper_bound, lower_bound = self._generate_predictions(self.feature_data)
+
         x_axis = np.arange(0, len(self.feature_data)) # sets the x-axis for the visualization
-        ax.plot(x_axis, np.log(self.target_data.reshape(1, -1)[0]), color='black', label='Mean') # visualize the actual target data
-        ax.plot(x_axis, self.predictions_mean, color='green', label='Mean') # visualize the predictions
-        ax.plot(x_axis, self.upper_bound, color='red', label='Upper') # visualize the prediction's upper bound
-        ax.plot(x_axis, self.lower_bound, color='red', label='Lower') # visualize the prediction's lower bound
-        ax.fill_between(x_axis, self.upper_bound, self.lower_bound, color="blue", alpha=0.15) # fills a color between the upper and lower bound visualizations
-        ax.legend(['Data', 'Prediction Mean', 'Upper Bound x% Confidence Interval', 'Lower Bound x% Confidence Interval', 'Confidence Interval']) # add legends to the visualizations
+        # visualize the training data alongside the prediction's mean and confidence interval
+        self._visualize_time_series_predictions(ax, x_axis, self.target_data, predictions_mean, upper_bound, lower_bound, ['black', 'red', 'blue', 'green'])
+
+        # lists of legends for the visualization
+        list_of_legends = ['Data', 'Prediction Mean', 'Upper Bound x% Confidence Interval', 'Lower Bound x% Confidence Interval', 'Confidence Interval']
+
+        if self.validation_percentage != None:
+            # generate prediction's mean and confidence interval based in the validation data
+            val_predictions_mean, val_predictions_std, val_upper_bound, val_lower_bound = self._generate_predictions(self.validation_feature_data)
+
+            val_x_axis = np.arange(len(self.feature_data), len(self.feature_data) + len(self.validation_feature_data)) # sets the x-axis for the visualization
+            # visualize the training data alongside the prediction's mean and confidence interval
+            self._visualize_time_series_predictions(ax, val_x_axis, self.validation_target_data, val_predictions_mean, val_upper_bound, val_lower_bound, ['dimgray', 'lightcoral', 'lightskyblue', 'lightgreen'])
+            
+            # lists of legends for the visualization
+            temp_list_of_legends = ['Validation\'s Data', 'Validation\'s Prediction Mean', 'Validation\'s Upper Bound x% Confidence Interval', 'Validation\'s Lower Bound x% Confidence Interval', 'Validation\'s Confidence Interval']
+            list_of_legends = np.concatenate([list_of_legends, temp_list_of_legends])
+        
+        # add legends to the visualizations
+        ax.legend(list_of_legends)
 
         # shows the visualizations
         fig.show()

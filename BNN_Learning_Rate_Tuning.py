@@ -8,7 +8,7 @@ from time import time
 import matplotlib.pyplot as plt
 
 class bnn_learning_rate_tuning():
-    def __init__(self, input_layer, hidden_layers, output_layer, feature_data, target_data, error_type, window_size=None, initial_lr_power=1, end_lr_power=10, total_iters=50, tuning_epochs=25):
+    def __init__(self, input_layer, hidden_layers, output_layer, feature_data, target_data, error_type='mse', window_size=None, initial_lr_power=1, end_lr_power=10, total_iters=50, tuning_epochs=25):
         self.input_layer = input_layer
         self.hidden_layers = hidden_layers
         self.output_layer = output_layer
@@ -22,9 +22,9 @@ class bnn_learning_rate_tuning():
         self.tuning_epochs = tuning_epochs
 
         self.final_iter_mean_error = []
-        self.final_iter_std_error = []
+        self.final_iter_std_error = []        
 
-    def learning_rate_decay(self):
+    def generate_all_learning_rates(self):
         self.learning_rates = (10 ** (-1 * self.initial_lr_power)) * (10 ** (-1 * np.arange(self.total_iters) * (self.end_lr_power - self.initial_lr_power) / self.total_iters))
 
         return
@@ -36,7 +36,7 @@ class bnn_learning_rate_tuning():
                                                 self.output_layer, 
                                                 self.feature_data, 
                                                 self.target_data, 
-                                                self.error_type, 
+                                                error_type=self.error_type, 
                                                 window_size=self.window_size, 
                                                 learning_rate=learning_rate)
 
@@ -53,12 +53,12 @@ class bnn_learning_rate_tuning():
 
         return bnn_tuning
      
-    def learning_rate_tuning(self):
+    def perform_learning_rate_tuning(self):
         """
         measure the performance of the model using various learning rate
         """
         # generate all decayed learning rate
-        self.learning_rate_decay()
+        self.generate_all_learning_rates()
 
         # itrerate over all learning rates
         for current_iter, lr in enumerate(self.learning_rates):
@@ -78,11 +78,16 @@ class bnn_learning_rate_tuning():
                 bnn_tuning._training_sequences(lr, self.tuning_epochs, epoch + 1)
                 
             # calculate and saves the model's performance based on the current learning rate
-            final_mean_error, final_std_error = bnn_tuning._calculating_errors_sequences(error_func)
+            final_mean_error, final_std_error = bnn_tuning._calculating_errors_sequences(error_func, bnn_tuning.feature_data, bnn_tuning.target_data)
             self.final_iter_mean_error.append(final_mean_error)
             self.final_iter_std_error.append(final_std_error)
 
+            # since the print function utilize the global variables mean_error and std_error in bnn_tuning, we will append the calculated errors into it
+            bnn_tuning.mean_error.append(final_mean_error)
+            bnn_tuning.std_error.append(final_std_error)
             bnn_tuning._print_current_epoch_training_result(self.total_iters, current_iter + 1, lr, start_time, 'Iterations') # prints the training process result
+            
+            print(150 * '-') # just prints a line
         
         return
 
