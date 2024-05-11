@@ -16,7 +16,8 @@ class bayesian_neural_network():
                         target_data, 
                         validation_percentage=None, 
                         model_purpose='regression', 
-                        window_size=None, 
+                        window_size=None,
+                        batch_size=10,
                         learning_rate=None, 
                         initial_lr=None, 
                         end_lr=None,
@@ -28,6 +29,7 @@ class bayesian_neural_network():
         self.validation_percentage = validation_percentage # the percentage for the number of data used for validation 
         self.model_purpose = model_purpose # since the model is made for regression and classification task with each task having slight difference in the proess, we would need to specify the purpose of the model
         self.total_epochs = total_epochs # the number of epochs for training the data
+        self.batch_size = batch_size # sets the batch size used to update the weights
 
         # the window size value used to create the windowed dataset
         if window_size != None:
@@ -40,7 +42,7 @@ class bayesian_neural_network():
             self.initialization_type = 'random'
             self.error_func = self._calculate_prediction_mse
         else: # settings for binary classification task            
-            self.feature_data = feature_data.reshape(-11, feature_data.shape[1], 1)
+            self.feature_data = feature_data.reshape(-1, feature_data.shape[1], 1)
             self.target_data = target_data.reshape(1, -1)[0]
             self.initialization_type = 'xavier'
             self.error_func = self._calculate_prediction_accuracy
@@ -232,24 +234,31 @@ class bayesian_neural_network():
 
         return 100 * np.sum(np.abs(target_data - pred_mean) < 1) / len(target_data)
 
-    def _print_current_epoch_training_process(self, current_epoch, learning_rate, total_trained, start_time):
+    def _print_current_epoch_training_process(self, current_epoch, learning_rate, start_time):
         """
         prints the current condition of the training process
 
         Args:
         current_epoch (integer) - the current epoch for training the model
         learning_rate (float) - the current learning rate used to train the model
-        total_trained (integer) - the total number of feature data used to train the model
         start_time (integer) - the initial time where the current epoch starts
         """
         time_passed = np.round(time() - start_time, 2) # calculate the time passed from the initial start time
 
         # create the text that will be printed
-        text = f'Epoch: {current_epoch} / {self.total_epochs} - Learning Rate : {learning_rate} - Succesfull Train Percentage : {np.round(self.succesfull_train / total_trained * 100, 2)}% - Time Passed : {time_passed} Second'
+        text = f'Epoch: {current_epoch} / {self.total_epochs} - Learning Rate : {learning_rate} - Succesfull Train Percentage : {np.round(self.succesfull_train / self.total_trained * 100, 2)}% - Time Passed : {time_passed} Second'
         
         print(text, end='\r')
 
         return
+
+    def _create_empty_batch_optimizer(self):
+        
+        return [np.zeros(n_origin_neurons, n_destination_neurons) for n_origin_neurons, n_destination_neurons in zip(self.model_structure[:-1], self.model_structure[1:])]
+    
+    def _update_batch_optimizer(self, batch_optimizer, optimizer):
+
+        return [batch_opt + opt for batch_opt, opt in zip(batch_optimizer, optimizer)]
 
     def _training_sequences(self, learning_rate, current_epoch):
         """
@@ -261,40 +270,56 @@ class bayesian_neural_network():
         """ 
         start_time = time() # initialize the time where the training prcoess starts
         self.succesfull_train = 0 # create a global value to count the number of succesful train
-    
-        # iterate over all feature data
-        for total_trained, (feature_data_scaled_i, target_data_scaled_i) in enumerate(zip(self.feature_data_scaled, self.target_data_scaled)):
-            # perform the forward propagation to acquire all of variables on all neurons
-            forward_propagation_result = self.bnn_fp.forward_propagation(feature_data_scaled_i, 
-                                                                            self.m, 
-                                                                            self.v, 
-                                                                            self.model_structure)
+        self.total_trained = 0 # create a global value to count the number of trained data
 
-            # perform backward propagation to acquire the derivatives for optimizing the model's weights
-            d_logz_over_m, d_logz_over_v = self.bnn_pbp.calculate_derivatives(self.model_structure, 
-                                                                                target_data_scaled_i, 
+        steps = np.ceil(len(self.feature_data_scaled) / self.batch_size).astype(int)
+
+        # iterate over data to create batches of data
+        for s in range(steps):
+            # create empty batch optimizer
+            batch_d_logz_over_m = self._create_empty_batch_optimizer()
+            batch_d_logz_over_v = self._create_empty_batch_optimizer()
+
+            for feature_data_scaled_i, target_data_scaled_i in zip(self.feature_data_scaled[self.batch_size * s: self.batch_size * (s + 1)], self.target_data_scaled[self.batch_size * s: self.batch_size * (s + 1)]):
+                # perform the forward propagation to acquire all of variables on all neurons
+                forward_propagation_result = self.bnn_fp.forward_propagation(feature_data_scaled_i, 
+                                                                                target_data_scaled_i,
                                                                                 self.m, 
                                                                                 self.v, 
-                                                                                forward_propagation_result)
+                                                                                self.model_structure,
+                                                                                self.model_purpose)
 
-            # if there's a nan values in the gradient, the weight's mean and variance won't be updated
-            if (~np.isnan(d_logz_over_m[-1]).any()) and (~np.isnan(d_logz_over_v[-1]).any()):
-                # optimize the model's weights
-                self.m = self.bnn_pbp.optimize_m(self.m, 
-                                                    self.v, 
-                                                    d_logz_over_m,
-                                                    learning_rate)
-                self.v = self.bnn_pbp.optimize_v(self.m, 
-                                                    self.v, 
-                                                    d_logz_over_m, 
-                                                    d_logz_over_v,
-                                                    learning_rate)    
-                self.v = [np.abs(v) for v in self.v] # making sure that the variances are always non-negative
+                # perform backward propagation to acquire the derivatives for optimizing the model's weights
+                d_logz_over_m, d_logz_over_v = self.bnn_pbp.calculate_derivatives(self.model_structure, 
+                                                                                    target_data_scaled_i, 
+                                                                                    self.m, 
+                                                                                    self.v, 
+                                                                                    forward_propagation_result)
+
+                # if there's a nan values in the optimizer, the batch optimizer won't be updated
+                if (~np.isnan(d_logz_over_m[-1]).any()) and (~np.isnan(d_logz_over_v[-1]).any()):
+                    # updates the batch optimizer with the newly acquired optimizer 
+                    batch_d_logz_over_m = self._update_batch_optimizer(batch_d_logz_over_m, d_logz_over_m)
+                    batch_d_logz_over_v = self._update_batch_optimizer(batch_d_logz_over_v, d_logz_over_v)
+
+                    self.succesfull_train += 1 # add 1 into the number successfully trained data
                 
-                self.succesfull_train += 1 # add 1 into the variable because the training is succesful
-            
+                self.total_trained += 1
+
+            # optimize the model's weights
+            self.m = self.bnn_pbp.optimize_m(self.m, 
+                                                self.v, 
+                                                batch_d_logz_over_m,
+                                                learning_rate)
+            self.v = self.bnn_pbp.optimize_v(self.m, 
+                                                self.v, 
+                                                batch_d_logz_over_m, 
+                                                batch_d_logz_over_v,
+                                                learning_rate)    
+            self.v = [np.abs(v) for v in self.v] # making sure that the variances are always non-negative
+                
             # prints the current training process
-            self._print_current_epoch_training_process(current_epoch, learning_rate, total_trained+1, start_time)
+            self._print_current_epoch_training_process(current_epoch, learning_rate, start_time)
         
         return 
     
@@ -336,7 +361,7 @@ class bayesian_neural_network():
         time_passed = np.round(time() - start_time, 2) # calculate the time passed from the initial start time
         
         # create texts that will be printed
-        text_1 = f'Epoch : {current_epoch} / {self.total_epochs} - Learning Rate : {learning_rate} - Succesfull Train Percentage : {self.succesfull_train / len(self.feature_data) * 100}% - Time Passed : {time_passed} Second'
+        text_1 = f'Epoch : {current_epoch} / {self.total_epochs} - Learning Rate : {learning_rate} - Succesfull Train Percentage : {(self.succesfull_train / self.total_trained) * 100}% - Time Passed : {time_passed} Second'
         
         if self.model_purpose == 'regression': # the specific text for a regression task
             text_2 = f'MSE : {self.mean_error[-1]} - Standard Deviation : {self.std_error[-1]}'
@@ -475,12 +500,12 @@ class bayesian_neural_network():
         """
         # set the figure for the visualization
         fig, ax = plt.subplots()
-        fig.set_size_inches(20, 10)
 
         # generate prediction's mean and confidence interval based in the training data
         predictions_mean, predictions_std, upper_bound, lower_bound = self._generate_predictions(self.feature_data)
 
         x_axis = np.arange(0, len(self.feature_data)) # sets the x-axis for the visualization
+
         # visualize the training data alongside the prediction's mean and confidence interval
         self._visualize_regression_predictions(ax, x_axis, self.target_data, predictions_mean, upper_bound, lower_bound, ['black', 'red', 'blue', 'green'])
 

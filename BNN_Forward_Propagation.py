@@ -108,7 +108,7 @@ class bnn_forward_propagation():
         return (mz_i * (ma_i + ((va_i ** 0.5) * gamma)) * minus_cdf) \
                     + (cdf * va_i * (np.ones(len(ma_i)).reshape(-1, 1) - (gamma ** 0.5) - (gamma * alpha)))
 
-    def forward_propagation(self, feature_data_i, m, v, model_structure):
+    def forward_propagation(self, feature_data_i, target_data_i, m, v, model_structure, model_purpose='regression'):
         """
         perform forward propagation to acquire all variables
 
