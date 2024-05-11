@@ -9,102 +9,152 @@ from time import time
 import matplotlib.pyplot as plt
 
 class bayesian_neural_network():
-    def __init__(self, input_layer, hidden_layers, output_layer, feature_data, target_data, validation_percentage=None, model_purpose='regression', window_size=None, learning_rate=None, initial_lr=None, end_lr=None):        
-        # initilize all values required to build a bayesian neural network model
+    def __init__(self, input_layer, 
+                        hidden_layers, 
+                        output_layer, 
+                        feature_data, 
+                        target_data, 
+                        validation_percentage=None, 
+                        model_purpose='regression', 
+                        window_size=None, 
+                        learning_rate=None, 
+                        initial_lr=None, 
+                        end_lr=None,
+                        learning_rate_decay_type='exponential',
+                        total_epochs=100):       
+
+        # initilize all variables required to build a bayesian neural network model
         self.model_structure = np.concatenate((input_layer, hidden_layers, output_layer) ) # create a list containing number of neurons on each layers
-        self.validation_percentage = validation_percentage
-        self.model_purpose = model_purpose
-        
-        # create a global value for the window size value used to create the time-series feature data
+        self.validation_percentage = validation_percentage # the percentage for the number of data used for validation 
+        self.model_purpose = model_purpose # since the model is made for regression and classification task with each task having slight difference in the proess, we would need to specify the purpose of the model
+        self.total_epochs = total_epochs # the number of epochs for training the data
+
+        # the window size value used to create the windowed dataset
         if window_size != None:
             self.window_size = window_size
         
-        # the prediction activation function, feature data, and target data will be set accordingly based on the error type
-        if self.model_purpose == 'regression':
-            # the settings for time-series data
+        # set the appropriate weight initialization type and model performance measurements as well as transform the data according the task
+        if self.model_purpose == 'regression': # settings for regression task
             self.feature_data = np.exp(feature_data)
             self.target_data = np.exp(target_data)
             self.initialization_type = 'random'
             self.error_func = self._calculate_prediction_mse
-        else:
-            # the settings for non time-series data
-            self.feature_data = feature_data.reshape(-1, feature_data.shape[-1], 1)
+        else: # settings for binary classification task            
+            self.feature_data = feature_data.reshape(-11, feature_data.shape[1], 1)
             self.target_data = target_data.reshape(1, -1)[0]
-            self.initialization_type = 'xavier' # specify the weight's initialization method
-            self.error_func = self._calculate_prediction_accuracy # specify the type of error function for measuring the model's perfomance
+            self.initialization_type = 'xavier'
+            self.error_func = self._calculate_prediction_accuracy
 
         # raises an error if learning rate, initial learning rate, and end learning rate present as inputs
         if (learning_rate != None) and ((initial_lr != None) and (end_lr != None)):
             raise ValueError('There should be only either learning rate or initial and end learning rate')
         
+        # determine the type of learning rate used duuring model training
         if learning_rate != None:
-            # the learning rate will be the same for every epochs
-            self.learning_rate = learning_rate
+            self.learning_rate = learning_rate # the learning rate will be the same for every epochs
         elif (initial_lr != None) and (end_lr != None):
             # the learning rate will be decayed over time based on decayed learning rate type
             self.initial_lr = initial_lr # the initial learning rate
             self.end_lr = end_lr # the final learning rate
 
-        # create global variables that stores model performance on each epochs
+        # create global variables that stores the model's performance on each epochs
         self.mean_error = []
         self.std_error = []
         self.val_mean_error = []
         self.val_std_error = []
 
+        # prepare the training dataset and validation dataset (if asked) before training
+        self._prepare_dataset()
+
+        # initialize model weight's mean and variance
+        self._initialize_weight()
+
+        # generate all learning rates based on the learning rate decay type
+        if learning_rate_decay_type == False:
+            self.learning_rates = np.ones(self.total_epochs) * self.learning_rate
+        elif learning_rate_decay_type == 'exponential':
+            self._exponential_learning_rate_decay()
+
         # create instances of class for the forward and backward propagation object
         self.bnn_fp = bnn_forward_propagation()
         self.bnn_pbp = bnn_probabilistic_back_propagation(self.model_purpose)
     
-    def generate_windowed_dataset(self):
+    def _generate_windowed_dataset(self):
         """
         generate a windowed feature data and target data based on the number window size
-        this function is made spcefically for time-series data
+        this function is made spcefically for regression task
         """
         self.feature_data = np.concatenate([self.target_data[i:-self.window_size+i].reshape(-1, 1) for i in range(self.window_size)], axis=1).reshape(-1, self.window_size, 1)
         self.target_data = self.target_data[self.window_size:]
              
         return
     
-    def standardize_windowed_dataset(self):
+    def _standardize_windowed_dataset(self):
         """
-        standardize both windowed feature data and target data by applying an exponential function, then divide it with the max value of the corresponding windowed feature data
-        performing transformations as such ensures all values on the windowed feature data are non-positive valued and standardized to help improve the training process
-        this function is made spcefically for time-series data
+        standardize both windowed feature data and target data by applying an exponential function, then divide it with the max value of the corresponding windowed feature data.
+        performing such transformations ensures the feature data are all non-positive valued and standardized to help improve the training process.
+        this function also reshaped the data into the appropriate shape
+        this function is made spcefically for regression task
         """
         self.feature_data_scaled = (self.feature_data.reshape(-1, self.window_size) / np.max(self.feature_data, axis=1).reshape(-1, 1)).reshape(-1, self.window_size, 1)
         self.target_data_scaled = (self.target_data.reshape(-1, 1) / np.max(self.feature_data, axis=1).reshape(-1, 1)).reshape(-1, 1, 1)
 
         return
     
-    def standardize_dataset(self):
+    def _standardize_dataset(self):
         """
-        standardize both feature data and target data by applying an exponential function, then divide it with the max value of the corresponding windowed feature data
-        performing transformations as such helps improve the training process
+        there are no standardization done for a binary task. but, for the sake of generality of the program, we will create the scaled version of the data
+        this function is made spcefically for binary classification task
         """
         self.feature_data_scaled = self.feature_data
         self.target_data_scaled = self.target_data.reshape(-1, 1, 1)
 
         return
 
-    def generate_validation_training_dataset(self):
-        val_index = np.floor(len(self.feature_data) * (1 - self.validation_percentage)).astype(int)
+    def _generate_validation_training_dataset(self):
+        """
+        divide the data into training and validation data
+        """
+        val_index = np.floor(len(self.feature_data) * (1 - self.validation_percentage)).astype(int) # the index for dividing the training and validation data
+
+        # dividing for feature data
         self.validation_feature_data = self.feature_data[val_index:]
         self.feature_data = self.feature_data[:val_index]
 
+        # dividing for the scaled feature data
         self.validation_feature_data_scaled = self.feature_data_scaled[val_index:]
         self.feature_data_scaled = self.feature_data_scaled[:val_index]
 
+        # dividing for target data
         self.validation_target_data = self.target_data[val_index:]
         self.target_data = self.target_data[:val_index]
 
+        # dividing for the scaled target data
         self.validation_target_data_scaled = self.target_data_scaled[val_index:]
         self.target_data_scaled = self.target_data_scaled[:val_index]
+
+        return
+    
+    def _prepare_dataset(self):
+        """
+        prepare the dataset according to the model's task
+        """ 
+        if self.model_purpose == 'regression': # prepares the dataset for a regression task
+            self._generate_windowed_dataset() # generate the windowed-feature data
+            self._standardize_windowed_dataset() # standardain the windowed-feature and target data
+        else: # prepares the dataset for a binary classification task
+            self._standardize_dataset() 
+        
+        # divide the data into training and validation if asked to
+        if self.validation_percentage != None:
+            self._generate_validation_training_dataset()
 
         return
 
     def _generate_m_random_initialization(self, n_origin_neurons, n_destination_neurons):
         """
-        create an initial weight's mean for all neurons in a layer
+        create an initial weight's mean for all neurons in the layer
+        the initialization follows the random method
 
         Args:
         n_origin_neurons (integer) - number of neurons in the previous layer
@@ -114,8 +164,9 @@ class bayesian_neural_network():
 
     def _generate_v_random_initialization(self, n_origin_neurons, n_destination_neurons):
         """
-        create an initial weight's variance for all neurons in a layer
-        since variance are always non-positive, it is necessary to apply an absolute function to ensure that
+        create an initial weight's variance for all neurons in the layer
+        the initialization follows the random method
+        since variance are always positve, it is necessary to apply an absolute function to ensure that
         
         Args:
         n_origin_neurons (integer) - number of neurons in the previous layer
@@ -123,21 +174,21 @@ class bayesian_neural_network():
         """
         return np.abs(np.random.random(size=(n_destination_neurons, n_origin_neurons)))
 
-    def _generate_m_normal_xavier_initialization(self, n_origin_neurons, n_destination_neurons):
+    def _generate_m_normal_kaiming_initialization(self, n_origin_neurons, n_destination_neurons):
         """
-        create an initial weight's mean for all neurons in a layer
+        create an initial weight's mean for all neurons in the layer
+        the initialization follows the normal kaiming scheme
 
         Args:
         n_origin_neurons (integer) - number of neurons in the previous layer
         n_destination_neurons (integer) - number of neurons in the current layer
         """
-
         return np.zeros((n_destination_neurons, n_origin_neurons))
 
-    def _generate_v_normal_xavier_initialization(self, n_origin_neurons, n_destination_neurons):
+    def _generate_v_normal_kaiming_initialization(self, n_origin_neurons, n_destination_neurons):
         """
-        create an initial weight's variance for all neurons in a layer
-        since variance are always non-positive, it is necessary to apply an absolute function to ensure that
+        create an initial weight's variance for all neurons in the layer
+        the initialization follows the normal kaiming scheme
         
         Args:
         n_origin_neurons (integer) - number of neurons in the previous layer
@@ -146,35 +197,26 @@ class bayesian_neural_network():
         x = (1 / n_origin_neurons) ** 0.5
         
         return np.ones((n_destination_neurons, n_origin_neurons)) * x
-        
-    def generate_m(self):
+
+    def _initialize_weight(self):
         """
-        automate the process of generating all initial weight's mean on all layers
+        initialize the model weight's mean and variance for all neuron on all layers
         """
-        if self.initialization_type == 'random':
+        if self.initialization_type == 'random': # initialization for a regression task model
             self.m = [self._generate_m_random_initialization(n_origin_neurons, n_destination_neurons) for n_origin_neurons, n_destination_neurons in zip(self.model_structure[:-1], self.model_structure[1:])]
-        else:
-            self.m = [self._generate_m_normal_xavier_initialization(n_origin_neurons, n_destination_neurons) for n_origin_neurons, n_destination_neurons in zip(self.model_structure[:-1], self.model_structure[1:])]
-
-        return
-
-    def generate_v(self):
-        """
-        automate the process of generating all initial weight's variance on all layers
-        """
-        if self.initialization_type == 'random':
             self.v = [self._generate_v_random_initialization(n_origin_neurons, n_destination_neurons) for n_origin_neurons, n_destination_neurons in zip(self.model_structure[:-1], self.model_structure[1:])]
-        else:
-            self.v = [self._generate_v_normal_xavier_initialization(n_origin_neurons, n_destination_neurons) for n_origin_neurons, n_destination_neurons in zip(self.model_structure[:-1], self.model_structure[1:])]
-
-        return
+        else: # initialization for a binary classification task model
+            self.m = [self._generate_m_normal_kaiming_initialization(n_origin_neurons, n_destination_neurons) for n_origin_neurons, n_destination_neurons in zip(self.model_structure[:-1], self.model_structure[1:])]
+            self.v = [self._generate_v_normal_kaiming_initialization(n_origin_neurons, n_destination_neurons) for n_origin_neurons, n_destination_neurons in zip(self.model_structure[:-1], self.model_structure[1:])]
+        
+        return 
 
     def _calculate_prediction_mse(self, target_data, pred_mean):
         """
         calculate the prediction's mean squared error
 
         Args:
-        terget_data (array of floats) - the actual target data
+        target_data (array of floats) - the actual target data
         pred_mean (array of floats) - the model's prediction on based on the feature data
         """
         return np.mean((np.log(target_data) - pred_mean) ** 2)
@@ -184,45 +226,45 @@ class bayesian_neural_network():
         calculate the prediction's accuracy
 
         Args:
-        terget_data (array of floats) - the actual target data
+        target_data (array of floats) - the actual target data
         pred_mean (array of floats) - the model's prediction on based on the feature data
         """
 
         return 100 * np.sum(np.abs(target_data - pred_mean) < 1) / len(target_data)
 
-    def _print_current_epoch_training_process(self, total_epochs, current_epoch, current_lr, total_trained, start_time):
+    def _print_current_epoch_training_process(self, current_epoch, learning_rate, total_trained, start_time):
         """
         prints the current condition of the training process
 
         Args:
-        total_epochs (integer) - the total number of epochs for training the model
         current_epoch (integer) - the current epoch for training the model
-        current_lr (float) - the current learning rate used to train the model
+        learning_rate (float) - the current learning rate used to train the model
         total_trained (integer) - the total number of feature data used to train the model
         start_time (integer) - the initial time where the current epoch starts
         """
         time_passed = np.round(time() - start_time, 2) # calculate the time passed from the initial start time
+
         # create the text that will be printed
-        text = f'Epoch: {current_epoch} / {total_epochs} - Learning Rate : {current_lr} - Succesfull Train Percentage : {np.round(self.succesfull_train / total_trained * 100, 2)}% - Time Passed : {time_passed} Second'
+        text = f'Epoch: {current_epoch} / {self.total_epochs} - Learning Rate : {learning_rate} - Succesfull Train Percentage : {np.round(self.succesfull_train / total_trained * 100, 2)}% - Time Passed : {time_passed} Second'
+        
         print(text, end='\r')
 
         return
 
-    def _training_sequences(self, learning_rate, total_epochs, current_epoch):
+    def _training_sequences(self, learning_rate, current_epoch):
         """
-        the ordered sequences to train the model
+        the ordered sequences for training the model
 
         Args:
-        learning_rate (float) - the learning rate used to train the model
-        total_epochs (integer) - the total number of epochs for training the model
-        current_epoch (integer) - the current epoch for training the model
+        learning_rate (float) - the current learning rate used to train the model
+        current_epoch (integer) - the current training epochs
         """ 
         start_time = time() # initialize the time where the training prcoess starts
         self.succesfull_train = 0 # create a global value to count the number of succesful train
     
         # iterate over all feature data
         for total_trained, (feature_data_scaled_i, target_data_scaled_i) in enumerate(zip(self.feature_data_scaled, self.target_data_scaled)):
-            # perform the forward propagation to acquire all of variables on each neuron
+            # perform the forward propagation to acquire all of variables on all neurons
             forward_propagation_result = self.bnn_fp.forward_propagation(feature_data_scaled_i, 
                                                                             self.m, 
                                                                             self.v, 
@@ -252,58 +294,56 @@ class bayesian_neural_network():
                 self.succesfull_train += 1 # add 1 into the variable because the training is succesful
             
             # prints the current training process
-            self._print_current_epoch_training_process(total_epochs, current_epoch, learning_rate, total_trained+1, start_time)
+            self._print_current_epoch_training_process(current_epoch, learning_rate, total_trained+1, start_time)
         
         return 
     
-    def _calculating_errors_sequences(self, error_func, feature_data, target_data):
+    def _calculating_errors_sequences(self, feature_data, target_data):
         """
         the ordered sequences to calculate the model's performance
 
         Args:
-        error_func (function) - the function used to train the model
+        feature_data (matrices of floats) - the feature data used to make the predictions
+        target_data (array of floats) - the target data used to calculate the model's performance based on its predicitons
         """
-        # make prediction based on the model and calculate the prediction's mean and standard deviation
+        # make predictions based on the model, then calculate the prediction's mean and standard deviation
         pred_mean, pred_std = self.bnn_fp.feed_forward_neural_network(self.m, self.v, feature_data, self.model_structure, model_purpose=self.model_purpose)
 
-        # calculate the error and add it into their respective list 
-        mean_error = error_func(target_data, pred_mean)
+        # calculate the model performance
+        mean_error = self.error_func(target_data, pred_mean)
         std_error = np.mean(pred_std)
         
         return (mean_error, std_error)
 
-    def _exponential_learning_rate_decay(self, total_epochs):
+    def _exponential_learning_rate_decay(self):
         """
         create an array of learning rates used to train the model
-        the learning rates are acquired from decaying the initial learning rate in an exponential fashion
-        
-        Args:
-        total_epochs (integer) - the total number of epochs for training the model
+        the learning rates are acquired from decaying the initial learning rate in an exponential fashion        
         """
-        self.learning_rates = self.initial_lr / ((self.initial_lr / self.end_lr) * np.arange(1, total_epochs + 1) / total_epochs)
+        self.learning_rates = self.initial_lr / ((self.initial_lr / self.end_lr) * np.arange(1, self.total_epochs + 1) / self.total_epochs)
+        
         return  
 
-    def _print_current_epoch_training_result(self, total_epochs, current_epoch, current_lr, start_time, text):
+    def _print_current_epoch_training_result(self, current_epoch, learning_rate, start_time):
         """
-        prints the current training result
+        prints the current training epoch result based on the training data
 
         Args:
-        total_epochs (integer) - the total number of epochs for training the model
-        current_epoch (integer) - the current epoch for training the model
-        current_lr (float) - the current learning rate used to train the model
+        current_epoch (integer) - the current training epochs
+        learning_rate (float) - the current learning rate used to train the model
         start_time (integer) - the initial time where the current epoch starts
-        text (string) - text that will be printed
         """
         time_passed = np.round(time() - start_time, 2) # calculate the time passed from the initial start time
         
         # create texts that will be printed
-        text_1 = f'{text} : {current_epoch} / {total_epochs} - Learning Rate : {current_lr} - Succesfull Train Percentage : {self.succesfull_train / len(self.feature_data) * 100}% - Time Passed : {time_passed} Second'
-        if self.model_purpose == 'regression':
+        text_1 = f'Epoch : {current_epoch} / {self.total_epochs} - Learning Rate : {learning_rate} - Succesfull Train Percentage : {self.succesfull_train / len(self.feature_data) * 100}% - Time Passed : {time_passed} Second'
+        
+        if self.model_purpose == 'regression': # the specific text for a regression task
             text_2 = f'MSE : {self.mean_error[-1]} - Standard Deviation : {self.std_error[-1]}'
-        else:
+        else: # the specific text for a binary classification task
             text_2 = f'Accuracy : {self.mean_error[-1]}% - Standard Deviation : {self.std_error[-1]}'
 
-        # prints all texts
+        # print all texts
         print(150 * '-')
         print(text_1)
         print(text_2)
@@ -312,19 +352,12 @@ class bayesian_neural_network():
 
     def _print_current_epoch_validation_result(self):
         """
-        prints the current validation result
-
-        Args:
-        total_epochs (integer) - the total number of epochs for training the model
-        current_epoch (integer) - the current epoch for training the model
-        current_lr (float) - the current learning rate used to train the model
-        start_time (integer) - the initial time where the current epoch starts
-        text (string) - text that will be printed
+        prints the current training epoch validation result based on the validation data
         """
         # create texts that will be printed
-        if self.model_purpose == 'regression':
+        if self.model_purpose == 'regression': # the specific text for a regression task
             text = f'Validation MSE : {self.val_mean_error[-1]} - Validation Standard Deviation : {self.val_std_error[-1]}'
-        else:
+        else: # the specific text for a binary classification task
             text = f'Validation Accuracy : {self.val_mean_error[-1]}% - Validation Standard Deviation : {self.val_std_error[-1]}'
 
         # print all texts
@@ -332,40 +365,32 @@ class bayesian_neural_network():
         
         return
 
-    def train_model(self, total_epochs, learning_rate_decay_type=False):
+    def train_model(self):
         """
-        perform forward propagation to acquire all necessary variables, then perform backward propagation to optimize the model weight's mean and variance
-
-        Args:
-        total_epochs (integer) - the total number of epochs for training the model
-        learning_rate_decay_type (string) - the learning rate decay type
-        """
-        # generate all learning rates based on the learning rate decay type
-        if learning_rate_decay_type == False:
-            self.learning_rates = np.ones(total_epochs) * self.learning_rate
-        elif learning_rate_decay_type == 'exponential':
-            self._exponential_learning_rate_decay(total_epochs)
-        
+        train the model by performing forward propagation to acquire all necessary variables, then performing backward propagation to optimize the model weight's mean and variance
+        """        
         # start the training process
-        for epoch, lr in enumerate(self.learning_rates):
+        for current_epoch, learning_rate in enumerate(self.learning_rates):
             start_time = time() # initialize the time where the training prcoess starts
 
-            self._training_sequences(lr, total_epochs, epoch + 1) # trains the model
+            self._training_sequences(learning_rate, current_epoch + 1) # trains the model
             
-            # calculate and save the current model's performance based on the training data
-            mean_error, std_error = self._calculating_errors_sequences(self.error_func, self.feature_data, self.target_data)
+            mean_error, std_error = self._calculating_errors_sequences(self.feature_data, self.target_data) # calculate the model's performance based on the training data
+
+            # manually appends the training errors into their respective lists
             self.mean_error.append(mean_error)
             self.std_error.append(std_error)
 
-            self._print_current_epoch_training_result(total_epochs, epoch + 1, lr, start_time, 'Epoch') # prints the training process result
+            self._print_current_epoch_training_result(current_epoch + 1, learning_rate, start_time) # prints the training process result
 
             if self.validation_percentage != None:
-                # calculate and save the current model's performance based on the validation data
-                val_mean_error, val_std_error = self._calculating_errors_sequences(self.error_func, self.validation_feature_data, self.validation_target_data)
+                val_mean_error, val_std_error = self._calculating_errors_sequences(self.validation_feature_data, self.validation_target_data) # calculate the model's performance based on the validation data
+
+                # manually appends the validation errors into their respective lists
                 self.val_mean_error.append(val_mean_error)
                 self.val_std_error.append(val_std_error)
                 
-                self._print_current_epoch_validation_result() # prints the training process result
+                self._print_current_epoch_validation_result() # prints the validation result
             
             print(150 * '-') # just prints a line
         
@@ -379,20 +404,20 @@ class bayesian_neural_network():
         fig, (ax1, ax2) = plt.subplots(2, 1)
         fig.set_size_inches(20, 10)
 
-        # visualize the model's performance based on the calculated prediction's error and standard deviation
+        # visualize the model's performance throuughout training
         ax1.plot(self.mean_error, color='blue')
         ax2.plot(self.std_error, color='blue')
         
-        # sets the figure's title
+        # sets the figure's title based on the model's task
         if self.model_purpose == 'regression':
             ax1.set_title('MSE Throughout Training')
         else:
             ax1.set_title('Accuracy Throughout Training')
         ax2.set_title('Variance Throughout Training')
 
-        list_of_legends = ['Training']
+        list_of_legends = ['Training'] # make a list of legends for the visualization
 
-        # visualize the model's performance based on the calculated prediction's error and standard deviation on validation data
+        # visualize the model's performance based on the validation data
         if self.validation_percentage != None:
             ax1.plot(self.val_mean_error, color='red')
             ax2.plot(self.val_std_error, color='red')
@@ -423,7 +448,7 @@ class bayesian_neural_network():
 
         return (predictions_mean, predictions_std, upper_bound, lower_bound)
 
-    def _visualize_time_series_predictions(self, ax, x_axis, target_data, predictions_mean, upper_bound, lower_bound, colors):
+    def _visualize_regression_predictions(self, ax, x_axis, target_data, predictions_mean, upper_bound, lower_bound, colors):
         """
         create line plot of the prediction's mean and confidence interval
 
@@ -444,7 +469,7 @@ class bayesian_neural_network():
         
         return
     
-    def visualize_time_series_predictions(self):
+    def visualize_regression_predictions(self):
         """
         visualize the actual target data used for training and valiladtion as well as their respective prediction's mean and confidence interval
         """
@@ -457,7 +482,7 @@ class bayesian_neural_network():
 
         x_axis = np.arange(0, len(self.feature_data)) # sets the x-axis for the visualization
         # visualize the training data alongside the prediction's mean and confidence interval
-        self._visualize_time_series_predictions(ax, x_axis, self.target_data, predictions_mean, upper_bound, lower_bound, ['black', 'red', 'blue', 'green'])
+        self._visualize_regression_predictions(ax, x_axis, self.target_data, predictions_mean, upper_bound, lower_bound, ['black', 'red', 'blue', 'green'])
 
         # lists of legends for the visualization
         list_of_legends = ['Data', 'Prediction Mean', 'Upper Bound x% Confidence Interval', 'Lower Bound x% Confidence Interval', 'Confidence Interval']
@@ -468,7 +493,7 @@ class bayesian_neural_network():
 
             val_x_axis = np.arange(len(self.feature_data), len(self.feature_data) + len(self.validation_feature_data)) # sets the x-axis for the visualization
             # visualize the training data alongside the prediction's mean and confidence interval
-            self._visualize_time_series_predictions(ax, val_x_axis, self.validation_target_data, val_predictions_mean, val_upper_bound, val_lower_bound, ['dimgray', 'lightcoral', 'lightskyblue', 'lightgreen'])
+            self._visualize_regression_predictions(ax, val_x_axis, self.validation_target_data, val_predictions_mean, val_upper_bound, val_lower_bound, ['dimgray', 'lightcoral', 'lightskyblue', 'lightgreen'])
             
             # lists of legends for the visualization
             temp_list_of_legends = ['Validation\'s Data', 'Validation\'s Prediction Mean', 'Validation\'s Upper Bound x% Confidence Interval', 'Validation\'s Lower Bound x% Confidence Interval', 'Validation\'s Confidence Interval']

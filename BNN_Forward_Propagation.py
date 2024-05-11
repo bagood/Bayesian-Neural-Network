@@ -141,41 +141,42 @@ class bnn_forward_propagation():
 
     def _relu_activation_function(self, layers):
         """
-        transform all neuron's values on a layer using the ReLu activation function
+        transform all neuron's values on the hidden layer using the ReLU activation function
 
         Args:
         layers (vector of floats) - values on each neuron in a layer
         """
-        original_shape = layers.shape
+        original_shape = layers.shape # save the original shape of the layer
 
         return np.max(np.concatenate((layers.reshape(-1, 1), np.zeros(layers.reshape(-1, 1).shape)), axis=1), axis=1).reshape(original_shape)
     
     def _binary_classification_output_activation_function(self, predictions):
         """
-        transform the neuron's values on a the output layer using the ...
+        transform the neuron's values on a the output layer using the probit function
+        for all data that is labeled as 0 will be replaced with -1
+
+        1 is the label for a fraudulent data
+        -1 is the label for a non-fraudulent data
         
         Args:
         predicitons (matrices of floats) - the predictions resulted from the model
         """
-        # ------------ REMEMBER ------------
-        # 1 IS THE LABEL FOR FRAUD
-        # -1 IS THE LABEL FOR NON-FRAUD
-        # ------------ REMEMBER ------------
-
-        fraud = (norm.cdf(predictions) > norm.cdf(-predictions)).astype(int)
-        fraud[fraud == 0] = -1
+        fraud = (norm.cdf(predictions) > norm.cdf(-predictions)).astype(int) # based on the prediction, calculate which labek have the higher probability 
+        fraud[fraud == 0] = -1 # replace 0 with -1
 
         return fraud
     
     def _feed_forward_neural_network(self, mean, variance, feature_data, model_structure):
         """
-        the feed forward process to acquire non-activated prediction based on the feature data
+        the feed forward process to acquire the non-activated prediction based on the feature data
 
         Args:
         mean (array of matrices of floats) - the weight's mean on all layers in the model
         variance (array of matrices of floats) - the weight's variance on all layers in the model
+        feature_data (matrices of floats) - the feature data used to make the predictions
+        model_structure (array of ints) - the number of neuron in the input, hidden, and output layers
         """
-        latest_neuron_values = feature_data # sets the input layer as the feature data
+        latest_neuron_values = feature_data # sets the feature data as the input layer
         
         # perform standard feed forward in the neural network
         for i, (mean_i, var_i) in enumerate(zip(mean[:-1], variance[:-1])):
@@ -184,7 +185,8 @@ class bnn_forward_propagation():
             activated_layers = self._relu_activation_function(layers) # activate the neuron values in the current layer
             latest_neuron_values = activated_layers
         
-        weight = np.random.normal(mean[-1], variance[-1]) # take sample from a normal distribution with the mean and variance are the corresponding weight's mean and variance
+        # perform the same forward propagation to acquire the non-activated prediction 
+        weight = np.random.normal(mean[-1], variance[-1])
         predictions = (weight @ latest_neuron_values) / (model_structure[-2] ** 0.5)
         
         return predictions.reshape(1, -1)[0]
@@ -197,18 +199,19 @@ class bnn_forward_propagation():
         mean (array of matrices of floats) - the weight's mean on all layers in the model
         variance (array of matrices of floats) - the weight's variance on all layers in the model
         feature_data (matrices of floats) - the feature datas used to create the predictions
+        model_structure (array of ints) - the number of neuron in the input, hidden, and output layers
+        model_purpose (string) - the task which the model is aiming to do
         """
         # create predictions based on the feature data for 100 times
         predictions = np.array([self._feed_forward_neural_network(mean, variance, feature_data, model_structure) for _ in range(250)])
 
-        # for a time-series data, the predictions must be applied with a logarithmic funtion because the target data used to train the model are applied with an exponential function
-        # for classification purposes, the predictions must be applied with a sigmoid function
-        if model_purpose == 'regression':
+        # transform the prediction value using the appropriate output-layer activation function based on the model's task
+        if model_purpose == 'regression': # perform transformation for a regression task
             # there are chances for the prediction's value to be less than zero, we will remove all prediction's with the value of zero since it will resulted in -inf if applied with a logarithmic function
             index_less_equal_to_zero = (predictions <= 0).reshape(1, -1)[0]
             predictions.reshape(1, -1)[0][index_less_equal_to_zero] = np.nan
-            predictions = np.log(predictions)
-        else:
+            predictions = np.log(predictions) # transform the data using the logarithmic function
+        else: # perform transformation for a binary classifiaction task
             predictions = np.array([self._binary_classification_output_activation_function(pred) for pred in predictions]) 
 
         # calculate the prediction's mean and standard deviation while ignoring any missing values

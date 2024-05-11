@@ -165,6 +165,7 @@ class bnn_probabilistic_back_propagation():
     def _derivative_logz_over_ma_L_for_binary_classification(self, target_data, ma_L, va_L):
         """
         calculate the derivative of the Lth log(z) over the Lth marginal input mean
+        this function is made spcefically for binary classification task
         """
         probid_func_input = ((target_data[0, 0] * ma_L) ** 2) / (1 + va_L)
 
@@ -176,6 +177,7 @@ class bnn_probabilistic_back_propagation():
     def _derivative_logz_over_va_L_for_binary_classification(self, target_data, ma_L, va_L):
         """
         calculate the derivative of the Lth log(z) over the Lth marginal input variance
+        this function is made spcefically for binary classification task
         """        
         probid_func_input = ((target_data[0, 0] * ma_L) ** 2) / (1 + va_L)
 
@@ -187,12 +189,14 @@ class bnn_probabilistic_back_propagation():
     def _derivative_logz_over_ma_L_for_regression(self, target_data, ma_L, va_L):
         """
         calculate the derivative of the Lth log(z) over the Lth marginal input mean
+        this function is made spcefically for regression task
         """
         return (target_data[0, 0] - ma_L) / va_L
 
     def _derivative_logz_over_va_L_for_regression(self, target_data, ma_L, va_L):
         """
         calculate the derivative of the Lth log(z) over the Lth marginal input variance
+        this function is made spcefically for regression task
         """
         return 0.5 * ((((target_data[0, 0] - ma_L) / va_L) ** 2) - (1 / va_L))
 
