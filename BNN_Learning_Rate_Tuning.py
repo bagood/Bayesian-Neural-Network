@@ -8,13 +8,13 @@ from time import time
 import matplotlib.pyplot as plt
 
 class bnn_learning_rate_tuning():
-    def __init__(self, input_layer, hidden_layers, output_layer, feature_data, target_data, error_type='mse', window_size=None, initial_lr_power=1, end_lr_power=10, total_iters=50, tuning_epochs=25):
+    def __init__(self, input_layer, hidden_layers, output_layer, feature_data, target_data, model_purpose='regression', window_size=None, initial_lr_power=1, end_lr_power=10, total_iters=50, tuning_epochs=25):
         self.input_layer = input_layer
         self.hidden_layers = hidden_layers
         self.output_layer = output_layer
         self.feature_data = feature_data
         self.target_data = target_data
-        self.error_type = error_type
+        self.model_purpose = model_purpose
         self.window_size = window_size
         self.initial_lr_power = initial_lr_power
         self.end_lr_power = end_lr_power
@@ -36,16 +36,16 @@ class bnn_learning_rate_tuning():
                                                 self.output_layer, 
                                                 self.feature_data, 
                                                 self.target_data, 
-                                                error_type=self.error_type, 
+                                                model_purpose=self.model_purpose, 
                                                 window_size=self.window_size, 
                                                 learning_rate=learning_rate)
 
         # prepares the data before training
-        if self.error_type == 'accuracy':
-            bnn_tuning.standardize_dataset()
-        else:  
+        if self.model_purpose == 'regression':
             bnn_tuning.generate_windowed_dataset()
             bnn_tuning.standardize_windowed_dataset()
+        else:  
+            bnn_tuning.standardize_dataset()
 
         # initialize the model weight's means and variances
         bnn_tuning.generate_m()
@@ -68,10 +68,10 @@ class bnn_learning_rate_tuning():
             bnn_tuning = self._preparation_for_learning_rate_tuning(lr)
 
             # specify which type of error funtion to be used for measuring the model's perfomance
-            if self.error_type == 'accuracy':
-                error_func = bnn_tuning._calculate_prediction_accuracy
-            else:
+            if self.model_purpose == 'regression':
                 error_func = bnn_tuning._calculate_prediction_mse
+            else:
+                error_func = bnn_tuning._calculate_prediction_accuracy
 
             # trains the model
             for epoch in range(self.tuning_epochs):
@@ -109,14 +109,14 @@ class bnn_learning_rate_tuning():
         ax1.tick_params('both', length=10, width=1, which='both')
         ax2.tick_params('both', length=10, width=1, which='both')
 
-        if self.error_type == 'accuracy':
-            ax1.set_title('Prediction\'s Accuracy On Various Learning Rate')
-            ax1.set_xlabel('Learning Rate')
-            ax1.set_ylabel('Prediction\'s Accuracy')
-        else:
+        if self.model_purpose == 'regression':
             ax1.set_title('Prediction\'s MSE On Various Learning Rate')
             ax1.set_xlabel('Learning Rate')
             ax1.set_ylabel('Prediction\'s MSE')
+        else:
+            ax1.set_title('Prediction\'s Accuracy On Various Learning Rate')
+            ax1.set_xlabel('Learning Rate')
+            ax1.set_ylabel('Prediction\'s Accuracy')
 
         ax2.set_title('Prediction\'s Standard Deviation On Various Learning Rate')
         ax2.set_xlabel('Learning Rate')

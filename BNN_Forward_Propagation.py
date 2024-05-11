@@ -150,15 +150,22 @@ class bnn_forward_propagation():
 
         return np.max(np.concatenate((layers.reshape(-1, 1), np.zeros(layers.reshape(-1, 1).shape)), axis=1), axis=1).reshape(original_shape)
     
-    def _sigmoid_activation_function(self, predictions):
+    def _binary_classification_output_activation_function(self, predictions):
         """
-        transform the neuron's values on a layer using the sigmoid function
+        transform the neuron's values on a the output layer using the ...
         
         Args:
         predicitons (matrices of floats) - the predictions resulted from the model
         """
+        # ------------ REMEMBER ------------
+        # 1 IS THE LABEL FOR FRAUD
+        # -1 IS THE LABEL FOR NON-FRAUD
+        # ------------ REMEMBER ------------
 
-        return 1 / (1 + np.exp(-1 * predictions))
+        fraud = (norm.cdf(predictions) > norm.cdf(-predictions)).astype(int)
+        fraud[fraud == 0] = -1
+
+        return fraud
     
     def _feed_forward_neural_network(self, mean, variance, feature_data, model_structure):
         """
@@ -182,7 +189,7 @@ class bnn_forward_propagation():
         
         return predictions.reshape(1, -1)[0]
 
-    def feed_forward_neural_network(self, mean, variance, feature_data, model_structure, transorm_pred_func='log'):
+    def feed_forward_neural_network(self, mean, variance, feature_data, model_structure, model_purpose='regression'):
         """
         perform feed forward to acquire the predictions
         
@@ -194,17 +201,15 @@ class bnn_forward_propagation():
         # create predictions based on the feature data for 100 times
         predictions = np.array([self._feed_forward_neural_network(mean, variance, feature_data, model_structure) for _ in range(250)])
 
-        # for a time-series data, the predictions must be applied with a loogarithmic funtion because the target data used to train the model are applied with an exponential function
-        # for classification purposes, the predictions must be applied with a sigmoid functiom
-        if transorm_pred_func == 'log':
+        # for a time-series data, the predictions must be applied with a logarithmic funtion because the target data used to train the model are applied with an exponential function
+        # for classification purposes, the predictions must be applied with a sigmoid function
+        if model_purpose == 'regression':
             # there are chances for the prediction's value to be less than zero, we will remove all prediction's with the value of zero since it will resulted in -inf if applied with a logarithmic function
             index_less_equal_to_zero = (predictions <= 0).reshape(1, -1)[0]
             predictions.reshape(1, -1)[0][index_less_equal_to_zero] = np.nan
             predictions = np.log(predictions)
         else:
-            index_equal_to_zero = (predictions == 0).reshape(1, -1)[0]
-            predictions.reshape(1, -1)[0][index_equal_to_zero] = np.nan
-            predictions = np.array([self._sigmoid_activation_function(pred) for pred in predictions])
+            predictions = np.array([self._binary_classification_output_activation_function(pred) for pred in predictions]) 
 
         # calculate the prediction's mean and standard deviation while ignoring any missing values
         predictions_mean = np.nanmean(predictions, axis=0)

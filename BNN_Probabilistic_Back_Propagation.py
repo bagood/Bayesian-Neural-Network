@@ -2,10 +2,11 @@ from warnings import simplefilter
 simplefilter('ignore')
 
 import numpy as np
+from scipy.stats import norm
 
 class bnn_probabilistic_back_propagation():
-    def __init__(self, transorm_pred_func):
-        self.transorm_pred_func = transorm_pred_func
+    def __init__(self, model_purpose):
+        self.model_purpose = model_purpose
 
         return
 
@@ -161,30 +162,35 @@ class bnn_probabilistic_back_propagation():
                     + self._derivative_va_i_over_vz_i_1(m_i_1, v_i_1) \
                         * self._derivative_vz_i_over_va_i(ma_i, va_i, mz_i, pdf_i, cdf_i, minus_cdf_i, gamma_i, alpha_i, d_mz_i_over_va_i, d_gamma_i_over_va_i, d_alpha_i_over_va_i)
 
-    def _derivative_logz_over_ma_L_with_sigmoid_activation(self, target_data, ma_L, va_L):
+    def _derivative_logz_over_ma_L_for_binary_classification(self, target_data, ma_L, va_L):
         """
         calculate the derivative of the Lth log(z) over the Lth marginal input mean
         """
-        ma_L_star = 1 / (1 + np.exp(-1 * ma_L))
-    
-        # return np.exp(-1 * ma_L) * ((1 + np.exp(-1 * ma_L)) ** (-2)) * ((target_data[0, 0] - ma_L_star) / va_L)
-        return (target_data[0, 0] - ma_L_star) / va_L
+        probid_func_input = ((target_data[0, 0] * ma_L) ** 2) / (1 + va_L)
 
-    def _derivative_logz_over_va_L_with_sigmoid_activation(self, target_data, ma_L, va_L):
+        return 1 / ((2 * np.pi) ** 0.5) \
+                    * np.exp(-0.5 * probid_func_input) \
+                        * target_data[0, 0] / ((1 + va_L) ** 0.5) \
+                            / norm.cdf(probid_func_input)
+
+    def _derivative_logz_over_va_L_for_binary_classification(self, target_data, ma_L, va_L):
         """
         calculate the derivative of the Lth log(z) over the Lth marginal input variance
-        """
-        ma_L_star = 1 / (1 + np.exp(-1 * ma_L))
+        """        
+        probid_func_input = ((target_data[0, 0] * ma_L) ** 2) / (1 + va_L)
 
-        return 0.5 * ((((target_data[0, 0] - ma_L_star) / va_L) ** 2) - (1 / va_L))
+        return 1 / ((2 * np.pi) ** 0.5) \
+                    * np.exp(-0.5 * probid_func_input) \
+                        * -0.5 * target_data[0, 0] * va_L / ((1 + va_L) ** 1.5) \
+                            / norm.cdf(probid_func_input)
 
-    def _derivative_logz_over_ma_L_with_log_activation(self, target_data, ma_L, va_L):
+    def _derivative_logz_over_ma_L_for_regression(self, target_data, ma_L, va_L):
         """
         calculate the derivative of the Lth log(z) over the Lth marginal input mean
         """
         return (target_data[0, 0] - ma_L) / va_L
 
-    def _derivative_logz_over_va_L_with_log_activation(self, target_data, ma_L, va_L):
+    def _derivative_logz_over_va_L_for_regression(self, target_data, ma_L, va_L):
         """
         calculate the derivative of the Lth log(z) over the Lth marginal input variance
         """
@@ -251,14 +257,14 @@ class bnn_probabilistic_back_propagation():
         d_va_over_ma_1 = [self._derivative_va_i_over_ma_i_1(m[i], v[i], ma[i], va[i], mz[i+1], pdf[i], cdf[i], minus_cdf[i], gamma[i], alpha[i], d_alpha_over_ma[i], d_gamma_over_ma[i], d_mz_over_ma[i]) for i in range(n_layers)]
         d_va_over_va_1 = [self._derivative_va_i_over_va_i_1(m[i], v[i], ma[i], va[i], mz[i+1], pdf[i], cdf[i], minus_cdf[i], gamma[i], alpha[i], d_alpha_over_ma[i], d_gamma_over_ma[i], d_mz_over_ma[i]) for i in range(n_layers)]
 
-        if self.transorm_pred_func == 'log':
+        if self.model_purpose == 'regression':
             # Gradients of log(Z) on Output Layer with log activation
-            d_logz_over_ma = [self._derivative_logz_over_ma_L_with_log_activation(target_data, ma[-1], va[-1])]
-            d_logz_over_va = [self._derivative_logz_over_va_L_with_log_activation(target_data, ma[-1], va[-1])]
+            d_logz_over_ma = [self._derivative_logz_over_ma_L_for_regression(target_data, ma[-1], va[-1])]
+            d_logz_over_va = [self._derivative_logz_over_va_L_for_regression(target_data, ma[-1], va[-1])]
         else:
             # Gradients of log(Z) on Output Layer with sigmoid
-            d_logz_over_ma = [self._derivative_logz_over_ma_L_with_sigmoid_activation(target_data, ma[-1], va[-1])]
-            d_logz_over_va = [self._derivative_logz_over_va_L_with_sigmoid_activation(target_data, ma[-1], va[-1])]            
+            d_logz_over_ma = [self._derivative_logz_over_ma_L_for_binary_classification(target_data, ma[-1], va[-1])]
+            d_logz_over_va = [self._derivative_logz_over_va_L_for_binary_classification(target_data, ma[-1], va[-1])]            
 
         # Gradients of log(Z) on Hidden Layers
         for i, (d_ma_i_over_ma_i_1, d_ma_i_over_va_i_1, d_va_i_over_ma_i_1, d_va_i_over_va_i_1) in enumerate(zip(d_ma_over_ma_1[::-1], d_ma_over_va_1[::-1], d_va_over_ma_1[::-1], d_va_over_va_1[::-1])):

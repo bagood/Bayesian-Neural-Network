@@ -9,30 +9,29 @@ from time import time
 import matplotlib.pyplot as plt
 
 class bayesian_neural_network():
-    def __init__(self, input_layer, hidden_layers, output_layer, feature_data, target_data, validation_percentage=None, error_type='mse', window_size=None, learning_rate=None, initial_lr=None, end_lr=None):        
+    def __init__(self, input_layer, hidden_layers, output_layer, feature_data, target_data, validation_percentage=None, model_purpose='regression', window_size=None, learning_rate=None, initial_lr=None, end_lr=None):        
         # initilize all values required to build a bayesian neural network model
-
         self.model_structure = np.concatenate((input_layer, hidden_layers, output_layer) ) # create a list containing number of neurons on each layers
-        self.error_type = error_type # create a global variable for determining the type of error that measures the model's performance
         self.validation_percentage = validation_percentage
+        self.model_purpose = model_purpose
         
         # create a global value for the window size value used to create the time-series feature data
         if window_size != None:
             self.window_size = window_size
         
         # the prediction activation function, feature data, and target data will be set accordingly based on the error type
-        if error_type == 'mse':
+        if self.model_purpose == 'regression':
             # the settings for time-series data
-            self.transorm_pred_func = 'log'
             self.feature_data = np.exp(feature_data)
             self.target_data = np.exp(target_data)
             self.initialization_type = 'random'
+            self.error_func = self._calculate_prediction_mse
         else:
             # the settings for non time-series data
-            self.transorm_pred_func = 'sigmoid'
             self.feature_data = feature_data.reshape(-1, feature_data.shape[-1], 1)
-            self.target_data = target_data
-            self.initialization_type = 'xavier'
+            self.target_data = target_data.reshape(1, -1)[0]
+            self.initialization_type = 'xavier' # specify the weight's initialization method
+            self.error_func = self._calculate_prediction_accuracy # specify the type of error function for measuring the model's perfomance
 
         # raises an error if learning rate, initial learning rate, and end learning rate present as inputs
         if (learning_rate != None) and ((initial_lr != None) and (end_lr != None)):
@@ -54,7 +53,7 @@ class bayesian_neural_network():
 
         # create instances of class for the forward and backward propagation object
         self.bnn_fp = bnn_forward_propagation()
-        self.bnn_pbp = bnn_probabilistic_back_propagation(self.transorm_pred_func)
+        self.bnn_pbp = bnn_probabilistic_back_propagation(self.model_purpose)
     
     def generate_windowed_dataset(self):
         """
@@ -88,7 +87,7 @@ class bayesian_neural_network():
         return
 
     def generate_validation_training_dataset(self):
-        val_index = 1 - np.floor(len(self.feature_data) * self.validation_percentage).astype(int)
+        val_index = np.floor(len(self.feature_data) * (1 - self.validation_percentage)).astype(int)
         self.validation_feature_data = self.feature_data[val_index:]
         self.feature_data = self.feature_data[:val_index]
 
@@ -103,7 +102,7 @@ class bayesian_neural_network():
 
         return
 
-    def _generate_m_normal_initialization(self, n_origin_neurons, n_destination_neurons):
+    def _generate_m_random_initialization(self, n_origin_neurons, n_destination_neurons):
         """
         create an initial weight's mean for all neurons in a layer
 
@@ -113,7 +112,7 @@ class bayesian_neural_network():
         """
         return np.random.uniform(-1, 1, size=(n_destination_neurons, n_origin_neurons))
 
-    def _generate_v_normal_initialization(self, n_origin_neurons, n_destination_neurons):
+    def _generate_v_random_initialization(self, n_origin_neurons, n_destination_neurons):
         """
         create an initial weight's variance for all neurons in a layer
         since variance are always non-positive, it is necessary to apply an absolute function to ensure that
@@ -124,7 +123,7 @@ class bayesian_neural_network():
         """
         return np.abs(np.random.random(size=(n_destination_neurons, n_origin_neurons)))
 
-    def _generate_m_random_xavier_initialization(self, n_origin_neurons, n_destination_neurons):
+    def _generate_m_normal_xavier_initialization(self, n_origin_neurons, n_destination_neurons):
         """
         create an initial weight's mean for all neurons in a layer
 
@@ -135,7 +134,7 @@ class bayesian_neural_network():
 
         return np.zeros((n_destination_neurons, n_origin_neurons))
 
-    def _generate_v_random_xavier_initialization(self, n_origin_neurons, n_destination_neurons):
+    def _generate_v_normal_xavier_initialization(self, n_origin_neurons, n_destination_neurons):
         """
         create an initial weight's variance for all neurons in a layer
         since variance are always non-positive, it is necessary to apply an absolute function to ensure that
@@ -144,7 +143,7 @@ class bayesian_neural_network():
         n_origin_neurons (integer) - number of neurons in the previous layer
         n_destination_neurons (integer) - number of neurons in the current layer
         """
-        x = (1 / n_origin_neurons) ** 2
+        x = (1 / n_origin_neurons) ** 0.5
         
         return np.ones((n_destination_neurons, n_origin_neurons)) * x
         
@@ -153,9 +152,9 @@ class bayesian_neural_network():
         automate the process of generating all initial weight's mean on all layers
         """
         if self.initialization_type == 'random':
-            self.m = [self._generate_m_normal_initialization(n_origin_neurons, n_destination_neurons) for n_origin_neurons, n_destination_neurons in zip(self.model_structure[:-1], self.model_structure[1:])]
+            self.m = [self._generate_m_random_initialization(n_origin_neurons, n_destination_neurons) for n_origin_neurons, n_destination_neurons in zip(self.model_structure[:-1], self.model_structure[1:])]
         else:
-            self.m = [self._generate_m_random_xavier_initialization(n_origin_neurons, n_destination_neurons) for n_origin_neurons, n_destination_neurons in zip(self.model_structure[:-1], self.model_structure[1:])]
+            self.m = [self._generate_m_normal_xavier_initialization(n_origin_neurons, n_destination_neurons) for n_origin_neurons, n_destination_neurons in zip(self.model_structure[:-1], self.model_structure[1:])]
 
         return
 
@@ -164,9 +163,9 @@ class bayesian_neural_network():
         automate the process of generating all initial weight's variance on all layers
         """
         if self.initialization_type == 'random':
-            self.v = [self._generate_v_normal_initialization(n_origin_neurons, n_destination_neurons) for n_origin_neurons, n_destination_neurons in zip(self.model_structure[:-1], self.model_structure[1:])]
+            self.v = [self._generate_v_random_initialization(n_origin_neurons, n_destination_neurons) for n_origin_neurons, n_destination_neurons in zip(self.model_structure[:-1], self.model_structure[1:])]
         else:
-            self.v = [self._generate_v_random_xavier_initialization(n_origin_neurons, n_destination_neurons) for n_origin_neurons, n_destination_neurons in zip(self.model_structure[:-1], self.model_structure[1:])]
+            self.v = [self._generate_v_normal_xavier_initialization(n_origin_neurons, n_destination_neurons) for n_origin_neurons, n_destination_neurons in zip(self.model_structure[:-1], self.model_structure[1:])]
 
         return
 
@@ -175,7 +174,8 @@ class bayesian_neural_network():
         calculate the prediction's mean squared error
 
         Args:
-        pred_mean (1D array of floats) - the model's prediction on based on the feature data
+        terget_data (array of floats) - the actual target data
+        pred_mean (array of floats) - the model's prediction on based on the feature data
         """
         return np.mean((np.log(target_data) - pred_mean) ** 2)
     
@@ -184,9 +184,11 @@ class bayesian_neural_network():
         calculate the prediction's accuracy
 
         Args:
-        pred_mean (1D array of floats) - the model's prediction on based on the feature data
+        terget_data (array of floats) - the actual target data
+        pred_mean (array of floats) - the model's prediction on based on the feature data
         """
-        return 100 * np.sum(target_data == np.round(pred_mean)) / len(target_data)
+
+        return 100 * np.sum(np.abs(target_data - pred_mean) < 1) / len(target_data)
 
     def _print_current_epoch_training_process(self, total_epochs, current_epoch, current_lr, total_trained, start_time):
         """
@@ -262,7 +264,7 @@ class bayesian_neural_network():
         error_func (function) - the function used to train the model
         """
         # make prediction based on the model and calculate the prediction's mean and standard deviation
-        pred_mean, pred_std = self.bnn_fp.feed_forward_neural_network(self.m, self.v, feature_data, self.model_structure, transorm_pred_func=self.transorm_pred_func)
+        pred_mean, pred_std = self.bnn_fp.feed_forward_neural_network(self.m, self.v, feature_data, self.model_structure, model_purpose=self.model_purpose)
 
         # calculate the error and add it into their respective list 
         mean_error = error_func(target_data, pred_mean)
@@ -296,7 +298,7 @@ class bayesian_neural_network():
         
         # create texts that will be printed
         text_1 = f'{text} : {current_epoch} / {total_epochs} - Learning Rate : {current_lr} - Succesfull Train Percentage : {self.succesfull_train / len(self.feature_data) * 100}% - Time Passed : {time_passed} Second'
-        if self.transorm_pred_func == 'log':
+        if self.model_purpose == 'regression':
             text_2 = f'MSE : {self.mean_error[-1]} - Standard Deviation : {self.std_error[-1]}'
         else:
             text_2 = f'Accuracy : {self.mean_error[-1]}% - Standard Deviation : {self.std_error[-1]}'
@@ -320,7 +322,7 @@ class bayesian_neural_network():
         text (string) - text that will be printed
         """
         # create texts that will be printed
-        if self.transorm_pred_func == 'log':
+        if self.model_purpose == 'regression':
             text = f'Validation MSE : {self.val_mean_error[-1]} - Validation Standard Deviation : {self.val_std_error[-1]}'
         else:
             text = f'Validation Accuracy : {self.val_mean_error[-1]}% - Validation Standard Deviation : {self.val_std_error[-1]}'
@@ -344,12 +346,6 @@ class bayesian_neural_network():
         elif learning_rate_decay_type == 'exponential':
             self._exponential_learning_rate_decay(total_epochs)
         
-        # specify which type of error funtion to be used for measuring the model's perfomance
-        if self.error_type == 'accuracy':
-            error_func = self._calculate_prediction_accuracy
-        else:
-            error_func = self._calculate_prediction_mse
-        
         # start the training process
         for epoch, lr in enumerate(self.learning_rates):
             start_time = time() # initialize the time where the training prcoess starts
@@ -357,7 +353,7 @@ class bayesian_neural_network():
             self._training_sequences(lr, total_epochs, epoch + 1) # trains the model
             
             # calculate and save the current model's performance based on the training data
-            mean_error, std_error = self._calculating_errors_sequences(error_func, self.feature_data, self.target_data)
+            mean_error, std_error = self._calculating_errors_sequences(self.error_func, self.feature_data, self.target_data)
             self.mean_error.append(mean_error)
             self.std_error.append(std_error)
 
@@ -365,7 +361,7 @@ class bayesian_neural_network():
 
             if self.validation_percentage != None:
                 # calculate and save the current model's performance based on the validation data
-                val_mean_error, val_std_error = self._calculating_errors_sequences(error_func, self.validation_feature_data, self.validation_target_data)
+                val_mean_error, val_std_error = self._calculating_errors_sequences(self.error_func, self.validation_feature_data, self.validation_target_data)
                 self.val_mean_error.append(val_mean_error)
                 self.val_std_error.append(val_std_error)
                 
@@ -388,7 +384,7 @@ class bayesian_neural_network():
         ax2.plot(self.std_error, color='blue')
         
         # sets the figure's title
-        if self.error_type == 'mse':
+        if self.model_purpose == 'regression':
             ax1.set_title('MSE Throughout Training')
         else:
             ax1.set_title('Accuracy Throughout Training')
@@ -419,7 +415,7 @@ class bayesian_neural_network():
         feature_data (array of floats) - the feature data sed to create predictions
         """
         # make predictions based on feature data used during training process
-        predictions_mean, predictions_std = self.bnn_fp.feed_forward_neural_network(self.m, self.v, feature_data, self.model_structure, transorm_pred_func=self.transorm_pred_func)
+        predictions_mean, predictions_std = self.bnn_fp.feed_forward_neural_network(self.m, self.v, feature_data, self.model_structure, model_purpose=self.model_purpose)
 
         # calculate the upper and lower bound of the prediction
         upper_bound = predictions_mean + predictions_std
