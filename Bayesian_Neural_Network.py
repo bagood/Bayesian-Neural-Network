@@ -162,7 +162,7 @@ class bayesian_neural_network():
         n_origin_neurons (integer) - number of neurons in the previous layer
         n_destination_neurons (integer) - number of neurons in the current layer
         """
-        return np.random.uniform(-1, 1, size=(n_destination_neurons, n_origin_neurons))
+        return np.random.normal(0, 1, size=(n_destination_neurons, n_origin_neurons))
 
     def _generate_v_random_initialization(self, n_origin_neurons, n_destination_neurons):
         """
@@ -185,7 +185,9 @@ class bayesian_neural_network():
         n_origin_neurons (integer) - number of neurons in the previous layer
         n_destination_neurons (integer) - number of neurons in the current layer
         """
-        return np.zeros((n_destination_neurons, n_origin_neurons))
+        x = (1 / n_origin_neurons) ** 0.5
+
+        return np.random.normal(0, x, size=(n_destination_neurons, n_origin_neurons))
 
     def _generate_v_normal_kaiming_initialization(self, n_origin_neurons, n_destination_neurons):
         """
@@ -232,7 +234,7 @@ class bayesian_neural_network():
         pred_mean (array of floats) - the model's prediction on based on the feature data
         """
 
-        return 100 * np.sum(np.abs(target_data - pred_mean) < 1) / len(target_data)
+        return 100 * np.sum((pred_mean >= 0.5).astype(int) == target_data) / len(target_data)
 
     def _print_current_epoch_training_process(self, current_epoch, learning_rate, start_time):
         """
@@ -274,6 +276,11 @@ class bayesian_neural_network():
 
         steps = np.ceil(len(self.feature_data_scaled) / self.batch_size).astype(int)
 
+        # shuffles the feature and target_data
+        indexes = np.random.permutation(len(self.feature_data_scaled))
+        self.feature_data_scaled = self.feature_data_scaled[indexes]
+        self.target_data_scaled = self.target_data_scaled[indexes]
+        
         # iterate over data to create batches of data
         for s in range(steps):
             # create empty batch optimizer
@@ -286,8 +293,7 @@ class bayesian_neural_network():
                                                                                 target_data_scaled_i,
                                                                                 self.m, 
                                                                                 self.v, 
-                                                                                self.model_structure,
-                                                                                self.model_purpose)
+                                                                                self.model_structure)
 
                 # perform backward propagation to acquire the derivatives for optimizing the model's weights
                 d_logz_over_m, d_logz_over_v = self.bnn_pbp.calculate_derivatives(self.model_structure, 
@@ -345,8 +351,11 @@ class bayesian_neural_network():
         create an array of learning rates used to train the model
         the learning rates are acquired from decaying the initial learning rate in an exponential fashion        
         """
-        self.learning_rates = self.initial_lr / ((self.initial_lr / self.end_lr) * np.arange(1, self.total_epochs + 1) / self.total_epochs)
-        
+        if self.initial_lr >= self.end_lr:
+            self.learning_rates = self.initial_lr / ((self.initial_lr / self.end_lr) * np.arange(1, self.total_epochs + 1) / self.total_epochs)
+        else:
+            self.learning_rates = self.initial_lr * ((self.end_lr / self.initial_lr) * np.arange(1, self.total_epochs + 1) / self.total_epochs)
+            
         return  
 
     def _print_current_epoch_training_result(self, current_epoch, learning_rate, start_time):
@@ -500,6 +509,7 @@ class bayesian_neural_network():
         """
         # set the figure for the visualization
         fig, ax = plt.subplots()
+        fig.set_size_inches(15, 10)
 
         # generate prediction's mean and confidence interval based in the training data
         predictions_mean, predictions_std, upper_bound, lower_bound = self._generate_predictions(self.feature_data)

@@ -11,45 +11,27 @@ class bnn_forward_propagation():
     def _calculate_ma_i(self, mz_i_1, m_i):
         """
         calculate the ith layer's input marginal means
-
-        Args:
-        mz_i_1 (matrices of floats) - the (i-1)th layer output marginal mean
-        m_i (matrices of floats) - the ith layer weight's mean
         """
         return (m_i @ mz_i_1) / (len(m_i) ** 0.5)
 
     def _calculate_va_i(self, mz_i_1, vz_i_1, m_i, v_i):
         """
         calculate the ith layer's input marginal variances
-
-        Args:
-        mz_i_1 (matrices of floats) - the (i-1)th layer's output marginal mean
-        vz_i_1 (matrices of floats) - the (i-1)th layer's output marginal variance
-        m_i (matrices of floats) - the ith layer weight's mean
-        v_i (matrices of floats) - the ith layer weight's variance
         """
-        return  (((m_i * m_i) @ vz_i_1) \
-                    + (v_i @ (mz_i_1 * mz_i_1)) ) \
-                        / (len(mz_i_1) ** 0.5)
+        return  ((v_i @ (mz_i_1 ** 2)) \
+                    + ((m_i ** 2) @ vz_i_1) \
+                        + (v_i @ vz_i_1)) \
+                            / len(mz_i_1)
 
     def _calculate_alpha(self, ma_i, va_i):
         """
         calculate the ith layer's alpha values
-
-        Args:
-        ma_i (matrices of floats) - the ith layer's input marginal means
-        va_i (matrices of floats) - the ith layer's input marginal variances
         """
         return ma_i / (va_i ** 0.5)
 
     def _calculate_gaussian_cdf(self, ma_i, va_i, minus_bool):
         """
         calculate the ith layer's gaussian cumulative distributive function values
-
-        Args:
-        ma_i (matrices of floats) - the ith layer's input marginal mean
-        va_i (matrices of floats) - the ith layer's input marginal variance
-        minus_bool (bool) - sets the alpha value to negative if the value is True, and the other way around
         """
         if minus_bool:
             alpha = -1 * self._calculate_alpha(ma_i, va_i)
@@ -61,10 +43,6 @@ class bnn_forward_propagation():
     def _calculate_gaussian_pdf(self, ma_i, va_i):
         """
         calculate the ith layer's gaussian probability density function values
-
-        Args:
-        ma_i (matrices of floats) - the ith layer's input marginal means
-        va_i (matrices of floats) - the ith layer's input marginal variances
         """
         alpha = self._calculate_alpha(ma_i, va_i)
         
@@ -73,47 +51,29 @@ class bnn_forward_propagation():
     def _calculate_gamma(self, cdf, pdf):
         """
         calculate the ith layer's gamma values
-
-        Args:
-        cdf (matrices of floats) - the ith layer's gaussian cumulative distributive function values
-        pdf (matrices of floats) - the ith layer's gaussian probability density function values
         """
         return pdf / cdf
         
     def _calculate_mz_i(self, ma_i, va_i, cdf, gamma):
         """
         calculate the ith layer's output mariginal means
-
-        Args:
-        ma_i (matrices of floats) - the ith layer's input marginal means
-        va_i (matrices of floats) - the ith layer's input marginal variances
-        cdf (matrices of floats) - the ith layer's gaussian cumulative distributive function values
-        gamma (matrices of floats) - the ith layer's gamma values
         """
         return cdf * (ma_i + ((va_i ** 0.5) * gamma))
 
     def _calculate_vz_i(self, ma_i, va_i, mz_i, cdf, minus_cdf, gamma, alpha):
         """
         calculate the ith layer's output mariginal means
-
-        Args:
-        ma_i (matrices of floats) - the ith layer's input marginal means
-        va_i (matrices of floats) - the ith layer's input marginal variances
-        mz_i (matrices of floats) - the ith layer's output marginal means
-        cdf (matrices of floats) - the ith layer's gaussian cumulative distributive function values
-        minus_cdf (matrices of floats) - the ith layer's gaussian cumulative distributive function values
-        gamma (matrices of floats) - the ith layer's gamma values
-        alpha (matrices of floats) - the ith layer's alpha values
         """
         return (mz_i * (ma_i + ((va_i ** 0.5) * gamma)) * minus_cdf) \
-                    + (cdf * va_i * (np.ones(len(ma_i)).reshape(-1, 1) - (gamma ** 0.5) - (gamma * alpha)))
+                    + (cdf * va_i * (1 - (gamma ** 2) - (gamma * alpha)))
 
-    def forward_propagation(self, feature_data_i, target_data_i, m, v, model_structure, model_purpose='regression'):
+    def forward_propagation(self, feature_data_i, target_data_i, m, v, model_structure):
         """
         perform forward propagation to acquire all variables
 
         Args:
         feature_data_i (matrices of floats) - the current feature data
+        target_data_i (matrices of floats) - the current target data
         m (matrices of floats) - the model weight's means
         v (matrices of floats) - the model weight's variances
         model_structure (matrices of floats) - list of the number of neurons on each layers
@@ -156,13 +116,12 @@ class bnn_forward_propagation():
         for all data that is labeled as 0 will be replaced with -1
 
         1 is the label for a fraudulent data
-        -1 is the label for a non-fraudulent data
+        0 is the label for a non-fraudulent data
         
         Args:
         predicitons (matrices of floats) - the predictions resulted from the model
         """
-        fraud = (norm.cdf(predictions) > norm.cdf(-predictions)).astype(int) # based on the prediction, calculate which labek have the higher probability 
-        fraud[fraud == 0] = -1 # replace 0 with -1
+        fraud = (norm.cdf(predictions) <= (1 - norm.cdf(predictions))).astype(int) # based on the prediction, calculate which labek have the higher probability 
 
         return fraud
     

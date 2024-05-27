@@ -16,17 +16,17 @@ class bnn_probabilistic_back_propagation():
         """
         return m_i / (len(m_i) ** 0.5) 
 
-    def _derivative_ma_i_over_vz_i_1(self):
+    def _derivative_ma_i_over_vz_i_1(self, m_i):
         """
         calculate the derivative of the ith marginal input mean over the (i-1)th marginal output variance
         """
-        return 0
+        return np.full(m_i.shape, 0)
 
     def _derivative_va_i_over_mz_i_1(self, mz_i_1, v_i):
         """
         calculate the derivative of the ith marginal input variance over the (i-1)th marginal output mean
         """
-        return (2 * mz_i_1 * v_i) / len(v_i)
+        return (2 * mz_i_1.T * v_i) / len(v_i)
 
     def _derivative_va_i_over_vz_i_1(self, m_i, v_i):
         """
@@ -34,39 +34,34 @@ class bnn_probabilistic_back_propagation():
         """
         return ((m_i ** 2) + v_i) / len(v_i)
 
-    def _extend_to_neuron_shape(self, array, target_shape):
-        """
-        transfrom an array into matrix
-        """
-        return np.array([array[0] for i in range(target_shape.shape[0])])
-
     def _derivative_ma_i_over_m_i(self, mz_i_1, m_i):
         """
         calculate the derivative of the ith marginal input mean over the ith weight's mean
         """
-        d_ma_i_over_m_i = mz_i_1 / (len(mz_i_1)) ** 0.5
+        d_ma_i_over_m_i = mz_i_1.T / (len(mz_i_1) ** 0.5)
 
-        return self._extend_to_neuron_shape(d_ma_i_over_m_i.T, m_i)
+        return np.full(m_i.shape, d_ma_i_over_m_i)
 
-    def _derivative_ma_i_over_v_i(self):
+    def _derivative_ma_i_over_v_i(self, m_i):
         """
         calculate the derivative of the ith marginal input mean over the ith weight's variance
         """
-        return 0
+        return np.full(m_i.shape, 0)
 
     def _derivative_va_i_over_m_i(self, vz_i_1, m_i):
         """
         calculate the derivative of the ith marginal input variance over the ith weight's mean
         """
-        return (2 * self._extend_to_neuron_shape(vz_i_1.T, m_i) * m_i) / len(vz_i_1)
+
+        return 2 * vz_i_1.T * m_i / len(vz_i_1)
 
     def _derivative_va_i_over_v_i(self, mz_i_1, vz_i_1, m_i):
         """
         calculate the derivative of the ith marginal input variance over the ith weight's variance
         """
-        d_va_i_over_v_i = ((mz_i_1 ** 2) + vz_i_1) / len(mz_i_1)
+        d_va_i_over_v_i = ((mz_i_1 ** 2).T + vz_i_1.T) / len(mz_i_1)
 
-        return self._extend_to_neuron_shape(d_va_i_over_v_i.T, m_i)    
+        return np.full(m_i.shape, d_va_i_over_v_i)
     
     def _derivative_alpha_i_over_ma_i(self, va_i):
         """
@@ -111,118 +106,92 @@ class bnn_probabilistic_back_propagation():
         calculate the derivative of the ith marginal output variance over the ith marginal input mean
         """
         return (d_mz_i_over_ma_i * (ma_i + ((va_i ** 0.5) * gamma_i)) * minus_cdf_i) \
-                    + mz_i * ((1 + ((va_i ** 0.5) * d_gamma_i_over_ma_i)) * minus_cdf_i \
-                            - ((ma_i + ((va_i ** 0.5) * gamma_i)) * pdf_i * d_alpha_i_over_ma_i)) \
-                    + pdf_i * d_alpha_i_over_ma_i * va_i * (1 - gamma_i ** 2 - (gamma_i * alpha_i)) \
-                    - cdf_i * va_i * ((2 * gamma_i * d_gamma_i_over_ma_i) + (d_gamma_i_over_ma_i * alpha_i) + (gamma_i * d_alpha_i_over_ma_i))
+                    + (mz_i * (((1 + ((va_i ** 0.5) * d_gamma_i_over_ma_i)) * minus_cdf_i) \
+                            - ((ma_i + ((va_i ** 0.5) * gamma_i)) * pdf_i * d_alpha_i_over_ma_i))) \
+                    + (pdf_i * d_alpha_i_over_ma_i * va_i * (1 - (gamma_i ** 2) - (gamma_i * alpha_i))) \
+                    - (cdf_i * va_i * ((2 * gamma_i * d_gamma_i_over_ma_i) + (d_gamma_i_over_ma_i * alpha_i) + (gamma_i * d_alpha_i_over_ma_i)))
 
     def _derivative_vz_i_over_va_i(self, ma_i, va_i, mz_i, pdf_i, cdf_i, minus_cdf_i, gamma_i, alpha_i, d_mz_i_over_va_i, d_gamma_i_over_va_i, d_alpha_i_over_va_i):
         """
         calculate the derivative of the ith marginal output variance over the ith marginal input variance
         """
         return (d_mz_i_over_va_i * (ma_i + ((va_i ** 0.5) * gamma_i)) * minus_cdf_i) \
-                    + mz_i * ((((1 / (2 * (va_i ** 0.5))) * gamma_i) + ((va_i ** 0.5) * d_gamma_i_over_va_i)) * minus_cdf_i \
-                            - ((ma_i + ((va_i ** 0.5) * gamma_i)) * pdf_i * d_alpha_i_over_va_i)) \
-                    + pdf_i * d_alpha_i_over_va_i * va_i * (1 - (gamma_i ** 2) - (gamma_i * alpha_i)) \
-                    + cdf_i * ((1 - (gamma_i ** 2) - (gamma_i * alpha_i)) - (va_i * ((2 * gamma_i * d_gamma_i_over_va_i) + (d_gamma_i_over_va_i * alpha_i) + (gamma_i * d_alpha_i_over_va_i))))
+                    + (mz_i * ((((1 / (2 * (va_i ** 0.5))) * gamma_i) + ((va_i ** 0.5) * d_gamma_i_over_va_i)) * minus_cdf_i \
+                            - ((ma_i + ((va_i ** 0.5) * gamma_i)) * pdf_i * d_alpha_i_over_va_i))) \
+                    + (pdf_i * d_alpha_i_over_va_i * va_i * (1 - (gamma_i ** 2) - (gamma_i * alpha_i))) \
+                    + (cdf_i * ((1 - (gamma_i ** 2) - (gamma_i * alpha_i)) - (va_i * ((2 * gamma_i * d_gamma_i_over_va_i) + (d_gamma_i_over_va_i * alpha_i) + (gamma_i * d_alpha_i_over_va_i)))))
 
-    def _derivative_ma_i_over_ma_i_1(self, m_i_1, ma_i, va_i, mz_i, pdf_i, cdf_i, minus_cdf_i, gamma_i, alpha_i, d_alpha_i_over_ma_i, d_gamma_i_over_ma_i, d_mz_i_over_ma_i):
-        """
-        calculate the derivative of the ith marginal input mean over the (i-1)th marginal input mean
-        """
-        return self._derivative_ma_i_over_mz_i_1(m_i_1) \
-                        * self._derivative_mz_i_over_ma_i(ma_i, va_i, cdf_i, pdf_i, gamma_i, d_alpha_i_over_ma_i, d_gamma_i_over_ma_i) \
-                    + self._derivative_ma_i_over_vz_i_1()  \
-                        * self._derivative_vz_i_over_ma_i(ma_i, va_i, mz_i, pdf_i, cdf_i, minus_cdf_i, gamma_i, alpha_i, d_mz_i_over_ma_i, d_gamma_i_over_ma_i, d_alpha_i_over_ma_i)
+    def _derivative_ma_i_over_ma_i_1(self, d_ma_over_mz_i, d_mz_over_ma_i, d_ma_over_vz_i, d_vz_over_ma_i):
+        return (d_ma_over_mz_i * d_mz_over_ma_i) + (d_ma_over_vz_i * d_vz_over_ma_i)
+        
+    def _derivative_ma_i_over_va_i_1(self, d_ma_over_mz_i, d_mz_over_va_i, d_ma_over_vz_i, d_vz_over_va_i):
+        return (d_ma_over_mz_i * d_mz_over_va_i) + (d_ma_over_vz_i * d_vz_over_va_i)
 
-    def _derivative_ma_i_over_va_i_1(self, m_i_1, ma_i, va_i, mz_i, pdf_i, cdf_i, minus_cdf_i, gamma_i, alpha_i, d_alpha_i_over_va_i, d_gamma_i_over_va_i, d_mz_i_over_va_i):
-        """
-        calculate the derivative of the ith marginal input mean over the (i-1)th marginal input variance
-        """
-        return self._derivative_ma_i_over_mz_i_1(m_i_1) \
-                        * self._derivative_mz_i_over_va_i(ma_i, va_i, cdf_i, pdf_i, gamma_i, d_alpha_i_over_va_i, d_gamma_i_over_va_i) \
-                    + self._derivative_ma_i_over_vz_i_1() \
-                        * self._derivative_vz_i_over_va_i(ma_i, va_i, mz_i, pdf_i, cdf_i, minus_cdf_i, gamma_i, alpha_i, d_mz_i_over_va_i, d_gamma_i_over_va_i, d_alpha_i_over_va_i)
+    def _derivative_va_i_over_ma_i_1(self, d_va_over_mz_i, d_mz_over_ma_i, d_va_over_vz_i, d_vz_over_ma_i):
+        return (d_va_over_mz_i * d_mz_over_ma_i) + (d_va_over_vz_i * d_vz_over_ma_i)
 
-    def _derivative_va_i_over_ma_i_1(self, m_i_1, v_i_1, ma_i, va_i, mz_i, pdf_i, cdf_i, minus_cdf_i, gamma_i, alpha_i, d_alpha_i_over_ma_i, d_gamma_i_over_ma_i, d_mz_i_over_ma_i):
-        """
-        calculate the derivative of the ith marginal input variance over the (i-1)th marginal input mean
-        """
-        return self._derivative_va_i_over_mz_i_1(mz_i, v_i_1) \
-                        * self._derivative_mz_i_over_ma_i(ma_i, va_i, cdf_i, pdf_i, gamma_i, d_alpha_i_over_ma_i, d_gamma_i_over_ma_i) \
-                    + self._derivative_va_i_over_vz_i_1(m_i_1, v_i_1) \
-                        * self._derivative_vz_i_over_ma_i(ma_i, va_i, mz_i, pdf_i, cdf_i, minus_cdf_i, gamma_i, alpha_i, d_mz_i_over_ma_i, d_gamma_i_over_ma_i, d_alpha_i_over_ma_i)
+    def _derivative_va_i_over_va_i_1(self, d_va_over_mz_i, d_mz_over_va_i, d_va_over_vz_i, d_vz_over_va_i):
+        return (d_va_over_mz_i * d_mz_over_va_i) + (d_va_over_vz_i * d_vz_over_va_i)
 
-    def _derivative_va_i_over_va_i_1(self, m_i_1, v_i_1, ma_i, va_i, mz_i, pdf_i, cdf_i, minus_cdf_i, gamma_i, alpha_i, d_alpha_i_over_va_i, d_gamma_i_over_va_i, d_mz_i_over_va_i):
-        """
-        calculate the derivative of the ith marginal input variance over the (i-1)th marginal input variance
-        """
-        return self._derivative_va_i_over_mz_i_1(mz_i, v_i_1) \
-                        * self._derivative_mz_i_over_va_i(ma_i, va_i, cdf_i, pdf_i, gamma_i, d_alpha_i_over_va_i, d_gamma_i_over_va_i) \
-                    + self._derivative_va_i_over_vz_i_1(m_i_1, v_i_1) \
-                        * self._derivative_vz_i_over_va_i(ma_i, va_i, mz_i, pdf_i, cdf_i, minus_cdf_i, gamma_i, alpha_i, d_mz_i_over_va_i, d_gamma_i_over_va_i, d_alpha_i_over_va_i)
-
-    def _derivative_logz_over_ma_L_for_binary_classification(self, target_data, ma_L, va_L):
-        """
+    def _derivative_logz_over_mz_L_for_binary_classification(self, target_data, mz_L, vz_L):
+        """        
         calculate the derivative of the Lth log(z) over the Lth marginal input mean
         this function is made spcefically for binary classification task
         """
-        probid_func_input = ((target_data[0, 0] * ma_L) ** 2) / (1 + va_L)
+        probit_func_input = mz_L / ((1 + vz_L) ** 0.5)
 
-        return 1 / ((2 * np.pi) ** 0.5) \
-                    * np.exp(-0.5 * probid_func_input) \
-                        * target_data[0, 0] / ((1 + va_L) ** 0.5) \
-                            / norm.cdf(probid_func_input)
+        return (((1 - target_data[0, 0]) / norm.cdf(probit_func_input)) - (target_data[0, 0] / (1 - norm.cdf(probit_func_input)))) \
+                    * norm.pdf(probit_func_input) \
+                        / ((1 + vz_L) ** 0.5)
 
-    def _derivative_logz_over_va_L_for_binary_classification(self, target_data, ma_L, va_L):
+    def _derivative_logz_over_vz_L_for_binary_classification(self, target_data, mz_L, vz_L):
         """
         calculate the derivative of the Lth log(z) over the Lth marginal input variance
         this function is made spcefically for binary classification task
         """        
-        probid_func_input = ((target_data[0, 0] * ma_L) ** 2) / (1 + va_L)
+        probit_func_input = mz_L / ((1 + vz_L) ** 0.5)
 
-        return 1 / ((2 * np.pi) ** 0.5) \
-                    * np.exp(-0.5 * probid_func_input) \
-                        * -0.5 * target_data[0, 0] * va_L / ((1 + va_L) ** 1.5) \
-                            / norm.cdf(probid_func_input)
+        return (((1 - target_data[0, 0]) / norm.cdf(probit_func_input)) - (target_data[0, 0] / (1 - norm.cdf(probit_func_input)))) \
+                    * norm.pdf(probit_func_input) \
+                        * (-0.5) * mz_L / ((1 + vz_L) ** 1.5)
 
-    def _derivative_logz_over_ma_L_for_regression(self, target_data, ma_L, va_L):
+    def _derivative_logz_over_mz_L_for_regression(self, target_data, mz_L, vz_L):
         """
         calculate the derivative of the Lth log(z) over the Lth marginal input mean
         this function is made spcefically for regression task
         """
-        return (target_data[0, 0] - ma_L) / va_L
+        return (target_data[0, 0] - mz_L) / vz_L
 
-    def _derivative_logz_over_va_L_for_regression(self, target_data, ma_L, va_L):
+    def _derivative_logz_over_vz_L_for_regression(self, target_data, mz_L, vz_L):
         """
         calculate the derivative of the Lth log(z) over the Lth marginal input variance
         this function is made spcefically for regression task
         """
-        return 0.5 * ((((target_data[0, 0] - ma_L) / va_L) ** 2) - (1 / va_L))
+        return 0.5 * ((((target_data[0, 0] - mz_L) / vz_L) ** 2) - (1 / vz_L))
 
     def _derivative_logz_over_ma_i_1(self, d_logz_over_ma_i, d_logz_over_va_i, d_ma_i_over_ma_i_1, d_va_i_over_ma_i_1):
         """
         calculate the derivative of the ith log(z) over the (i-1)th marginal input mean
         """
-        return (d_ma_i_over_ma_i_1.T @ d_logz_over_ma_i) + (d_va_i_over_ma_i_1.T @ d_logz_over_va_i)
+        return np.sum((d_logz_over_ma_i * d_ma_i_over_ma_i_1) + (d_logz_over_va_i * d_va_i_over_ma_i_1), axis=0).reshape(-1, 1)
 
     def _derivative_logz_over_va_i_1(self, d_logz_over_ma_i, d_logz_over_va_i, d_ma_i_over_va_i_1, d_va_i_over_va_i_1):
         """
         calculate the derivative of the ith log(z) over the (i-1)th marginal input variance
         """
-        return (d_ma_i_over_va_i_1.T @ d_logz_over_ma_i) + (d_va_i_over_va_i_1.T @ d_logz_over_va_i)
+        return np.sum((d_logz_over_ma_i * d_ma_i_over_va_i_1) + (d_logz_over_va_i * d_va_i_over_va_i_1), axis=0).reshape(-1, 1)
     
     def _derivative_logz_over_m_i(self, d_logz_over_ma_i, d_logz_over_va_i, d_ma_i_over_m_i, d_va_i_over_m_i):
         """
         calculate the derivative of the ith log(z) over the (i-1)th weight's mean
         """
-        return (d_logz_over_ma_i * d_ma_i_over_m_i) + (d_logz_over_va_i * d_va_i_over_m_i)
+        return (d_logz_over_ma_i.T * d_ma_i_over_m_i) + (d_logz_over_va_i.T * d_va_i_over_m_i)
 
     def _derivative_logz_over_v_i(self, d_logz_over_ma_i, d_logz_over_va_i, d_ma_i_over_v_i, d_va_i_over_v_i):
         """
         calculate the derivative of the ith log(z) over the (i-1)th weight's variance
         """
-        return (d_logz_over_ma_i * d_ma_i_over_v_i) + (d_logz_over_va_i * d_va_i_over_v_i) 
+        return (d_logz_over_ma_i.T * d_ma_i_over_v_i) + (d_logz_over_va_i.T * d_va_i_over_v_i) 
     
     def calculate_derivatives(self, model_structure, target_data, m, v, forward_propagation_result):
         """
@@ -233,13 +202,13 @@ class bnn_probabilistic_back_propagation():
 
         # Gradients of Input Marginal Mean and Variance over Output Marginal Mean and Variance
         d_ma_over_mz = [self._derivative_ma_i_over_mz_i_1(m[i]) for i in range(n_layers)]
-        d_ma_over_vz = [self._derivative_ma_i_over_vz_i_1() for i in range(n_layers)]
-        d_va_over_mz = [self._derivative_va_i_over_mz_i_1(m[i], v[i]) for i in range(n_layers)]
+        d_ma_over_vz = [self._derivative_ma_i_over_vz_i_1(m[i]) for i in range(n_layers)]
+        d_va_over_mz = [self._derivative_va_i_over_mz_i_1(mz[i], v[i]) for i in range(n_layers)]
         d_va_over_vz = [self._derivative_va_i_over_vz_i_1(m[i], v[i]) for i in range(n_layers)]        
 
         # Gradients of Input Marginal Mean and Variance over Mean and Variance
         d_ma_over_m = [self._derivative_ma_i_over_m_i(mz[i], m[i]) for i in range(n_layers)]
-        d_ma_over_v = [self._derivative_ma_i_over_v_i() for i in range(n_layers)]
+        d_ma_over_v = [self._derivative_ma_i_over_v_i(m[i]) for i in range(n_layers)]
         d_va_over_m = [self._derivative_va_i_over_m_i(vz[i], m[i]) for i in range(n_layers)]
         d_va_over_v = [self._derivative_va_i_over_v_i(mz[i], vz[i], m[i]) for i in range(n_layers)]
 
@@ -256,26 +225,27 @@ class bnn_probabilistic_back_propagation():
         d_vz_over_va = [self._derivative_vz_i_over_va_i(ma[i], va[i], mz[i+1], pdf[i], cdf[i], minus_cdf[i], gamma[i], alpha[i], d_mz_over_va[i], d_gamma_over_va[i], d_alpha_over_va[i]) for i in range(n_layers)]
 
         # Gradients of ith Layer Marginal Inputs over (i-1)th Layer Marginal Inputs
-        d_ma_over_ma_1 = [self._derivative_ma_i_over_ma_i_1(m[i], ma[i], va[i], mz[i+1], pdf[i], cdf[i], minus_cdf[i], gamma[i], alpha[i], d_alpha_over_ma[i], d_gamma_over_ma[i], d_mz_over_ma[i]) for i in range(n_layers)] 
-        d_ma_over_va_1 = [self._derivative_ma_i_over_va_i_1(m[i], ma[i], va[i], mz[i+1], pdf[i], cdf[i], minus_cdf[i], gamma[i], alpha[i], d_alpha_over_va[i], d_gamma_over_va[i], d_mz_over_va[i]) for i in range(n_layers)]
-        d_va_over_ma_1 = [self._derivative_va_i_over_ma_i_1(m[i], v[i], ma[i], va[i], mz[i+1], pdf[i], cdf[i], minus_cdf[i], gamma[i], alpha[i], d_alpha_over_ma[i], d_gamma_over_ma[i], d_mz_over_ma[i]) for i in range(n_layers)]
-        d_va_over_va_1 = [self._derivative_va_i_over_va_i_1(m[i], v[i], ma[i], va[i], mz[i+1], pdf[i], cdf[i], minus_cdf[i], gamma[i], alpha[i], d_alpha_over_ma[i], d_gamma_over_ma[i], d_mz_over_ma[i]) for i in range(n_layers)]
+        d_ma_over_ma_1 = [self._derivative_ma_i_over_ma_i_1(d_ma_over_mz[i], d_mz_over_ma[i], d_ma_over_vz[i], d_vz_over_ma[i]) for i in range(n_layers)]
+        d_ma_over_va_1 = [self._derivative_ma_i_over_va_i_1(d_ma_over_mz[i], d_mz_over_va[i], d_ma_over_vz[i], d_vz_over_va[i]) for i in range(n_layers)]
+        d_va_over_ma_1 = [self._derivative_va_i_over_ma_i_1(d_va_over_mz[i], d_mz_over_ma[i], d_va_over_vz[i], d_vz_over_ma[i]) for i in range(n_layers)]
+        d_va_over_va_1 = [self._derivative_va_i_over_va_i_1(d_va_over_mz[i], d_mz_over_va[i], d_va_over_vz[i], d_vz_over_va[i]) for i in range(n_layers)]
 
         if self.model_purpose == 'regression':
             # Gradients of log(Z) on Output Layer with log activation
-            d_logz_over_ma = [self._derivative_logz_over_ma_L_for_regression(target_data, ma[-1], va[-1])]
-            d_logz_over_va = [self._derivative_logz_over_va_L_for_regression(target_data, ma[-1], va[-1])]
+            d_logz_over_ma = [self._derivative_logz_over_mz_L_for_regression(target_data, mz[-1], vz[-1])]
+            d_logz_over_va = [self._derivative_logz_over_vz_L_for_regression(target_data, mz[-1], vz[-1])]
         else:
             # Gradients of log(Z) on Output Layer with sigmoid
-            d_logz_over_ma = [self._derivative_logz_over_ma_L_for_binary_classification(target_data, ma[-1], va[-1])]
-            d_logz_over_va = [self._derivative_logz_over_va_L_for_binary_classification(target_data, ma[-1], va[-1])]            
+            d_logz_over_ma = [self._derivative_logz_over_mz_L_for_binary_classification(target_data, mz[-1], vz[-1])]
+            d_logz_over_va = [self._derivative_logz_over_vz_L_for_binary_classification(target_data, mz[-1], vz[-1])]            
 
         # Gradients of log(Z) on Hidden Layers
         for i, (d_ma_i_over_ma_i_1, d_ma_i_over_va_i_1, d_va_i_over_ma_i_1, d_va_i_over_va_i_1) in enumerate(zip(d_ma_over_ma_1[::-1], d_ma_over_va_1[::-1], d_va_over_ma_1[::-1], d_va_over_va_1[::-1])):
             d_logz_over_ma.append(self._derivative_logz_over_ma_i_1(d_logz_over_ma[i], d_logz_over_va[i], d_ma_i_over_ma_i_1, d_va_i_over_ma_i_1))
             d_logz_over_va.append(self._derivative_logz_over_va_i_1(d_logz_over_ma[i], d_logz_over_va[i], d_ma_i_over_va_i_1, d_va_i_over_va_i_1))
-        d_logz_over_ma = d_logz_over_ma[:-1][::-1]
-        d_logz_over_va = d_logz_over_va[:-1][::-1]
+        
+        d_logz_over_ma = d_logz_over_ma[::-1]
+        d_logz_over_va = d_logz_over_va[::-1]
 
         # Gradients of log(Z) over Weight's Mean and Variance
         d_logz_over_m = [self._derivative_logz_over_m_i(d_logz_over_ma[i], d_logz_over_va[i], d_ma_over_m[i], d_va_over_m[i]) for i in range(n_layers)]
