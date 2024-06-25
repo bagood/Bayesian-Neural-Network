@@ -5,9 +5,7 @@ import numpy as np
 from scipy.stats import norm
 
 class bnn_probabilistic_back_propagation():
-    def __init__(self, model_purpose):
-        self.model_purpose = model_purpose
-
+    def __init__(self):
         return
 
     def _derivative_ma_i_over_mz_i_1(self, m_i):
@@ -138,36 +136,24 @@ class bnn_probabilistic_back_propagation():
         calculate the derivative of the Lth log(z) over the Lth marginal input mean
         this function is made spcefically for binary classification task
         """
-        probit_func_input = mz_L / ((1 + vz_L) ** 0.5)
+        probit_func_input = target_data[0, 0] * mz_L / ((1 + vz_L) ** 0.5)
 
-        return (((1 - target_data[0, 0]) / norm.cdf(probit_func_input)) - (target_data[0, 0] / (1 - norm.cdf(probit_func_input)))) \
+        return 1 / (norm.cdf(probit_func_input)) \
                     * norm.pdf(probit_func_input) \
-                        / ((1 + vz_L) ** 0.5)
+                        / ((1 + vz_L) ** 0.5) \
+                            * target_data[0, 0]
 
     def _derivative_logz_over_vz_L_for_binary_classification(self, target_data, mz_L, vz_L):
         """
         calculate the derivative of the Lth log(z) over the Lth marginal input variance
         this function is made spcefically for binary classification task
         """        
-        probit_func_input = mz_L / ((1 + vz_L) ** 0.5)
+        probit_func_input = target_data[0, 0] * mz_L / ((1 + vz_L) ** 0.5)
 
-        return (((1 - target_data[0, 0]) / norm.cdf(probit_func_input)) - (target_data[0, 0] / (1 - norm.cdf(probit_func_input)))) \
+        return 1 / (norm.cdf(probit_func_input)) \
                     * norm.pdf(probit_func_input) \
-                        * (-0.5) * mz_L / ((1 + vz_L) ** 1.5)
-
-    def _derivative_logz_over_mz_L_for_regression(self, target_data, mz_L, vz_L):
-        """
-        calculate the derivative of the Lth log(z) over the Lth marginal input mean
-        this function is made spcefically for regression task
-        """
-        return (target_data[0, 0] - mz_L) / vz_L
-
-    def _derivative_logz_over_vz_L_for_regression(self, target_data, mz_L, vz_L):
-        """
-        calculate the derivative of the Lth log(z) over the Lth marginal input variance
-        this function is made spcefically for regression task
-        """
-        return 0.5 * ((((target_data[0, 0] - mz_L) / vz_L) ** 2) - (1 / vz_L))
+                        * (-0.5) * mz_L / ((1 + vz_L) ** 1.5) \
+                            * target_data[0, 0]
 
     def _derivative_logz_over_ma_i_1(self, d_logz_over_ma_i, d_logz_over_va_i, d_ma_i_over_ma_i_1, d_va_i_over_ma_i_1):
         """
@@ -230,14 +216,8 @@ class bnn_probabilistic_back_propagation():
         d_va_over_ma_1 = [self._derivative_va_i_over_ma_i_1(d_va_over_mz[i], d_mz_over_ma[i], d_va_over_vz[i], d_vz_over_ma[i]) for i in range(n_layers)]
         d_va_over_va_1 = [self._derivative_va_i_over_va_i_1(d_va_over_mz[i], d_mz_over_va[i], d_va_over_vz[i], d_vz_over_va[i]) for i in range(n_layers)]
 
-        if self.model_purpose == 'regression':
-            # Gradients of log(Z) on Output Layer with log activation
-            d_logz_over_ma = [self._derivative_logz_over_mz_L_for_regression(target_data, mz[-1], vz[-1])]
-            d_logz_over_va = [self._derivative_logz_over_vz_L_for_regression(target_data, mz[-1], vz[-1])]
-        else:
-            # Gradients of log(Z) on Output Layer with sigmoid
-            d_logz_over_ma = [self._derivative_logz_over_mz_L_for_binary_classification(target_data, mz[-1], vz[-1])]
-            d_logz_over_va = [self._derivative_logz_over_vz_L_for_binary_classification(target_data, mz[-1], vz[-1])]            
+        d_logz_over_ma = [self._derivative_logz_over_mz_L_for_binary_classification(target_data, mz[-1], vz[-1])]
+        d_logz_over_va = [self._derivative_logz_over_vz_L_for_binary_classification(target_data, mz[-1], vz[-1])]            
 
         # Gradients of log(Z) on Hidden Layers
         for i, (d_ma_i_over_ma_i_1, d_ma_i_over_va_i_1, d_va_i_over_ma_i_1, d_va_i_over_va_i_1) in enumerate(zip(d_ma_over_ma_1[::-1], d_ma_over_va_1[::-1], d_va_over_ma_1[::-1], d_va_over_va_1[::-1])):
