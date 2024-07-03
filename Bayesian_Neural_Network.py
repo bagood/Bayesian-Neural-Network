@@ -19,12 +19,13 @@ class bayesian_neural_network():
                         batch_size=10,
                         learning_rate=None, 
                         initial_lr=None, 
-                        end_lr=None,
-                        learning_rate_decay_type='exponential',
+                        lr_decay_rate=None,
                         total_epochs=100):       
 
         # initilize all variables required to build a bayesian neural network model
         self.model_structure = np.concatenate((input_layer, hidden_layers, output_layer) ) # create a list containing number of neurons on each layers
+        self.model_structure[:-1] += 1 
+
         self.total_epochs = total_epochs # the number of epochs for training the data
         self.batch_size = batch_size # sets the batch size used to update the weights
     
@@ -32,16 +33,18 @@ class bayesian_neural_network():
         self.target_data = target_data.reshape(-1, 1, 1)
 
         # raises an error if learning rate, initial learning rate, and end learning rate present as inputs
-        if (learning_rate != None) and ((initial_lr != None) and (end_lr != None)):
-            raise ValueError('There should be only either learning rate or initial and end learning rate')
+        if (learning_rate != None) and ((initial_lr != None) and (lr_decay_rate != None)):
+            raise ValueError('There should be only either learning rate or both initial learning rate and learning rate decay')
         
         # determine the type of learning rate used duuring model training
         if learning_rate != None:
             self.learning_rate = learning_rate # the learning rate will be the same for every epochs
-        elif (initial_lr != None) and (end_lr != None):
+            self.learning_rates = np.ones(self.total_epochs) * self.learning_rate
+        elif (initial_lr != None) and (lr_decay_rate != None):
             # the learning rate will be decayed over time based on decayed learning rate type
             self.initial_lr = initial_lr # the initial learning rate
-            self.end_lr = end_lr # the final learning rate
+            self.lr_decay_rate = lr_decay_rate # the final learning rate
+            self._exponential_learning_rate_decay()
 
         # create global variables that stores the model's performance on each epochs
         self.pred_mean_errors = []
@@ -49,12 +52,6 @@ class bayesian_neural_network():
 
         # initialize model weight's mean and variance
         self._initialize_weight()
-
-        # generate all learning rates based on the learning rate decay type
-        if learning_rate_decay_type == False:
-            self.learning_rates = np.ones(self.total_epochs) * self.learning_rate
-        elif learning_rate_decay_type == 'exponential':
-            self._exponential_learning_rate_decay()
 
         # create instances of class for the forward and backward propagation object
         self.bnn_fp = bnn_forward_propagation()
@@ -90,8 +87,11 @@ class bayesian_neural_network():
         """
         initialize the model weight's mean and variance for all neuron on all layers
         """
-        self.m = [self._generate_m_normal_kaiming_initialization(n_origin_neurons, n_destination_neurons) for n_origin_neurons, n_destination_neurons in zip(self.model_structure[:-1], self.model_structure[1:])]
-        self.v = [self._generate_v_normal_kaiming_initialization(n_origin_neurons, n_destination_neurons) for n_origin_neurons, n_destination_neurons in zip(self.model_structure[:-1], self.model_structure[1:])]
+        self.m = [self._generate_m_normal_kaiming_initialization(n_origin_neurons, n_destination_neurons) for n_origin_neurons, n_destination_neurons in zip(self.model_structure[:-2], self.model_structure[1:-1])]
+        self.v = [self._generate_v_normal_kaiming_initialization(n_origin_neurons, n_destination_neurons) for n_origin_neurons, n_destination_neurons in zip(self.model_structure[:-2], self.model_structure[1:-1])]
+
+        self.m.append(np.abs(self._generate_m_normal_kaiming_initialization(self.model_structure[-2], self.model_structure[-1])))
+        self.v.append(self._generate_v_normal_kaiming_initialization(self.model_structure[-2], self.model_structure[-1]))
         
         return 
     
@@ -283,10 +283,7 @@ class bayesian_neural_network():
         create an array of learning rates used to train the model
         the learning rates are acquired from decaying the initial learning rate in an exponential fashion        
         """
-        if self.initial_lr >= self.end_lr:
-            self.learning_rates = self.initial_lr + ((self.end_lr - self.initial_lr) * np.arange(1, self.total_epochs + 1) / self.total_epochs)
-        else:
-            self.learning_rates = self.initial_lr * ((self.end_lr / self.initial_lr) * np.arange(1, self.total_epochs + 1) / self.total_epochs)
+        self.learning_rates = [(self.lr_decay_rate ** i) * self.initial_lr for i in range(1, self.total_epochs+1)]
             
         return  
 
@@ -307,7 +304,7 @@ class bayesian_neural_network():
         accuracy = np.array(self.pred_mean_errors)[:, 0][-1]
         precision = np.array(self.pred_mean_errors)[:, 1][-1]
         recall = np.array(self.pred_mean_errors)[:, 2][-1]
-        text_2 = f'Accuracy : {accuracy}% - Precision : {precision}% - Recall : {recall}% - Standard Deviation : {self.pred_std_error[-1]}'
+        text_2 = f'Accuracy : {accuracy}% - Precision : {precision}% - Sensitivity : {recall}% - Standard Deviation : {self.pred_std_error[-1]}'
 
         # print all texts
         print(150 * '-')
@@ -357,11 +354,11 @@ class bayesian_neural_network():
         ax2.plot(self.pred_std_error, color='black')
         
         # set the legend for the visualizations
-        ax1.legend(['Accuracy', 'Precision', 'Recall'])
+        ax1.legend(['Accuracy', 'Precision', 'Sensitivity'])
         ax2.legend(['Standard Deviation'])
 
         # sets the figure's title based on the model's task
-        ax1.set_title('Accuracy, Precision, and Recall Throughout Training')
+        ax1.set_title('Accuracy, Precision, and Sensitivity Throughout Training')
         ax2.set_title('Standard Deviation Throughout Training')
 
         return
