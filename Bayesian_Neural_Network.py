@@ -4,9 +4,10 @@ from BNN_Probabilistic_Back_Propagation import bnn_probabilistic_back_propagatio
 from warnings import simplefilter
 simplefilter('ignore')
 
-import math
 import numpy as np
+import pandas as pd
 from time import time
+from scipy.stats import norm
 import matplotlib.pyplot as plt
 from sklearn.metrics import confusion_matrix
 
@@ -22,8 +23,8 @@ class bayesian_neural_network():
                         lr_decay_rate=None,
                         total_epochs=100):       
 
-        # initilize all variables required to build a bayesian neural network model
-        self.model_structure = np.concatenate((input_layer, hidden_layers, output_layer) ) # create a list containing number of neurons on each layers
+        # create a list containing number of neurons on each layers
+        self.model_structure = np.concatenate((input_layer, hidden_layers, output_layer) ) 
         self.model_structure[:-1] += 1 
 
         self.total_epochs = total_epochs # the number of epochs for training the data
@@ -143,7 +144,7 @@ class bayesian_neural_network():
         # append the feed-forward mean and variance results to be used for calculating errors
         # this is done to help imptove the computational efficiency
         self.pred_mean.append(forward_propagation_result[-2][-1])
-        self.pred_std.append(forward_propagation_result[-1][-1])
+        self.pred_std.append(forward_propagation_result[-1][-1] ** 0.5)
 
         # perform backward propagation to acquire the derivatives for optimizing the model's weights
         d_logz_over_m, d_logz_over_v = self.bnn_pbp.calculate_derivatives(self.model_structure, 
@@ -252,20 +253,25 @@ class bayesian_neural_network():
         
         return 
 
-    def _calculate_prediction_confusion_matrix(self):
+    def _calculate_prediction_confusion_matrix(self, binary_prediction=None, target_prediction=None):
         """
         calculate the model's evaluation metrics
+
+        Args:
+        binary_prediction (pandas series) - a column on a dataframe containing the prediction
+        target_prediction (pandas series) - a column on a dataframe containing the actual values
         """ 
-        # calculate the value of a 2 dimensional confusion matrix
-        tp, fp, fn, tn  = confusion_matrix(self.target_data.T[0, 0], self.pred_mean.T[0, 0], labels=[1, -1]).ravel()
+        # calculate the value of a 3 dimensional confusion matrix
+        if np.any((binary_prediction == None) & (target_prediction == None)):
+            conf_mat  = confusion_matrix(self.target_data.T[0, 0], self.pred_mean.T[0, 0], labels=[1, 0, -1])
+        else:
+            conf_mat  = confusion_matrix(target_prediction, binary_prediction, labels=[1, 0, -1])
 
         # calculate the evaluation metrics for the model
-        accuracy = (tp + tn) / (tp + tn + fp + fn) * 100
-        precision = tp / (tp + fp) * 100
-        recall = tp / (tp + fn) * 100
-        precision = 0 if math.isnan(precision) else precision
-        recall = 0 if math.isnan(recall) else recall
-
+        accuracy = np.sum(np.diag(conf_mat)) / np.sum(conf_mat) * 100
+        precision = conf_mat[0, 0] / np.sum(conf_mat[:, 0]) * 100
+        recall = conf_mat[0, 0] / np.sum(conf_mat[0, :]) * 100
+        
         return (accuracy, precision, recall)   
 
     def _measuring_model_performances_sequences(self):
@@ -332,9 +338,55 @@ class bayesian_neural_network():
             
             print(150 * '-') # just prints a line
         
-        return         
+        return        
+
+    def predict_and_evaluate(self, feature_data_predict, target_data_predict):
+        """
+        make predictions based on the input and evaluate the model's performance based on that result
+
+        Args:
+        feature_data_predict (matrices of floats) - a matrix containing the feature data for creating predictions
+        target_data_predict (array of integers) - an array containing the target value for predictions
+        """
+        # transform the feature data into an appropriate shape
+        feature_data_predict = feature_data_predict.reshape(-1, self.feature_data.shape[1], 1)
+
+        # perform forward propagation to acquire prediction's mean and variance
+        pred_mean_var = np.array([self.bnn_fp.forward_propagation(feature_data_i, self.m, self.v, self.model_structure, True) for feature_data_i in feature_data_predict])
+
+        # create a dataframe containing the prediciton's mean and standard deviations
+        pred_df = pd.DataFrame({
+                                'Prediction Mean':pred_mean_var[:, 0],
+                                'Prediction STD':pred_mean_var[:, 1] ** 0.5
+                                })
+        
+        # create predictions based on the mean of the prediciton
+        pred_df['Prediksi'] = self.bnn_fp._binary_classification_output_activation_function(pred_df['Prediction Mean'].values)
+
+        # create a column in the dataframe to hold the actual target value
+        pred_df['Keluaran Aktual'] = target_data_predict
+
+        # calculate the prediction's confidence rate
+        pred_df['Tingkat Kepercayaan Terhadap Prediksi (%)'] = np.round(pred_df.apply(lambda row: 1 - norm.cdf(0, loc=row['Prediction Mean'], scale=row['Prediction STD']) if row['Prediksi'] == 1 else norm.cdf(0, loc=row['Prediction Mean'], scale=row['Prediction STD']), axis=1) * 100, 2)
+        
+        # create a column in the dataframe to show whether the prediction is correct
+        pred_df['Kebenaran Prediksi'] = pred_df['Prediksi'] == pred_df['Keluaran Aktual']
     
-    def visualize_model_performance(self):
+        # calculate the model's performance based on the predictions
+        accuracy, precision, recall = self._calculate_prediction_confusion_matrix(pred_df['Prediksi'], pred_df['Keluaran Aktual'])
+
+        # create new dataframe to store the model's performance
+        evaluation_df = pd.DataFrame({
+                                        'Evaluation Metric':['Accuracy', 'Precision', 'Sensitivity', 'Mean Standard Deviation'],
+                                        'Value':[accuracy, precision, recall, np.mean(pred_mean_var[:, 1] ** 0.5)]
+                                        })
+
+        pred_df['Prediksi'] = pred_df['Prediksi'].apply(lambda row: 'Fraud' if row == 1 else 'Tidak Fraud' if row == -1 else 'Gagal')
+        pred_df['Keluaran Aktual'] = pred_df['Keluaran Aktual'].apply(lambda row: 'Fraud' if row == 1 else 'Tidak Fraud' if row == -1 else 'Gagal')
+
+        return (pred_df, evaluation_df)        
+    
+    def visualize_model_performance(self, save_file_name=None):
         """
         visualize the model's performance throughout the training process
         """
@@ -354,11 +406,14 @@ class bayesian_neural_network():
         ax2.plot(self.pred_std_error, color='black')
         
         # set the legend for the visualizations
-        ax1.legend(['Accuracy', 'Precision', 'Sensitivity'])
-        ax2.legend(['Standard Deviation'])
+        ax1.legend(['Akurasi', 'Presisi', 'Sensitivitas'])
+        ax2.legend(['Rataan dari Standar Deviasi'])
 
         # sets the figure's title based on the model's task
-        ax1.set_title('Accuracy, Precision, and Sensitivity Throughout Training')
-        ax2.set_title('Standard Deviation Throughout Training')
+        ax1.set_title('Akurasi, Presisi, dan Sensitivitas Selama Pengembangan')
+        ax2.set_title('Rataan dari Standar Deviasi Selama Pengembangan')
+
+        if save_file_name != None:
+            plt.savefig(f'{save_file_name}.png')
 
         return

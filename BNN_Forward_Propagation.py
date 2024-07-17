@@ -77,7 +77,7 @@ class bnn_forward_propagation():
 
         return vz_i
 
-    def forward_propagation(self, feature_data_i, m, v, model_structure):
+    def forward_propagation(self, feature_data_i, m, v, model_structure, predict=False):
         """
         perform forward propagation to acquire all variables
 
@@ -117,6 +117,9 @@ class bnn_forward_propagation():
             else:
                 mz.append(np.log(ma[-1]))
                 vz.append(va[-1])
+        
+        if predict:
+            return [mz[-1][0, 0], vz[-1][0, 0]]
                 
         return (ma, va, cdf, minus_cdf, pdf, gamma, alpha, mz, vz)
         
@@ -126,12 +129,14 @@ class bnn_forward_propagation():
         for all data that is labeled as 0 will be replaced with -1
 
         1 is the label for a fraudulent data
-        0 is the label for a non-fraudulent data
+        0 the label for failed in making prediction
+        -1 is the label for a non-fraudulent data
         
         Args:
         predicitons (matrices of floats) - the predictions resulted from the model
         """
         fraud = (norm.cdf(-1 * predictions) <= norm.cdf(predictions)).astype(int) # based on the prediction, calculate which label have the higher probability 
         fraud[fraud == 0] = -1
+        fraud[np.isnan(predictions)] = 0
 
         return fraud
