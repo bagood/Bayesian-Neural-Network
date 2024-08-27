@@ -141,7 +141,8 @@ class bnn_probabilistic_back_propagation():
         return 1 / (norm.cdf(probit_func_input)) \
                     * norm.pdf(probit_func_input) \
                         / ((1 + vz_L) ** 0.5) \
-                            * target_data[0, 0]
+                            * target_data[0, 0] \
+                                
 
     def _derivative_logz_over_vz_L_for_binary_classification(self, target_data, mz_L, vz_L):
         """
