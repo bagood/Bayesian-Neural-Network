@@ -1,1 +1,9 @@
 # Bayesian-Neural-Network
+
+This is the code I developed for the purpose of acquiring my bachelors degree in mathematics. The topic of my thesis is "Fraud Detection Using Bayesian Neural Network". In my thesis, I focused on detecting fraud in a financial data utilizing bayesian neural network in combination with an undersampling method to overcome imbalance within the data and feature selection process.
+
+Fraud is defined as an activity of deception or illegality that harms a party, hence fraud detection is defined as the identification of such activity from legitimate or non-fraudulent activities. Generally, the number of fraud activities is much less compared to non-fraudulent activities, presenting a unique challenge to ensure that developed fraud detection solutions can avoid problems arised due to such imbalanced in the dataset. The solution proposed in this Final Project is a Bayesian neural network (BNN). BNN is a stochastic neural network with Bayes' rule as the stochastic component used. BNN was chosen due to its ability to minimize the risk of overfitting and provide a level of confidence in the predictions made. In this final project, BNN will be developed using reduced data and samples from the reduced data. Data will be reduced using feature selection techniques and sampling is done using undersampling techniques. The experimental results show that BNN can avoid overfitting. Furthermore, the BNN developed using processed data samples is of good quality, achieving accuracy, precision, and sensitivity of more than 70%, can be effectively developed, and the confidence level of the predictions can be utilized for fraud detection purposes.
+
+# Executions
+
+The process of the experiments is divided into two parts, data preparation and model developments. Please read the data_preparation.ipynb and test_bnn_for_fraud_detection_reduced_data.ipynb files respectively for data preparation and model development
